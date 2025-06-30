@@ -12,9 +12,6 @@ import commands.character_commands as character_commands
 import shared_functions
 from shared_functions import name_fix
 
-# *** GLOBAL VARIABLES *** #
-os.chdir("C:\\pathparser")
-
 
 async def forge_character_embed(
         character_name: str,
@@ -22,7 +19,7 @@ async def forge_character_embed(
         forge_channel_id: int,
         author: discord.Member):
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild.id}.sqlite") as conn:
+        async with aiosqlite.connect(f"pathparser_{guild.id}.sqlite") as conn:
             cursor = await conn.cursor()
 
             # Fetch character info
@@ -86,7 +83,7 @@ async def register_character_embed(
         character_name: str,
         guild: discord.Guild) -> Union[Tuple[discord.Embed, str, int, int], str]:
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild.id}.sqlite") as conn:
+        async with aiosqlite.connect(f"pathparser_{guild.id}.sqlite") as conn:
             conn.row_factory = aiosqlite.Row
             cursor = await conn.cursor()
 
@@ -526,7 +523,7 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
             await interaction.followup.send("Invalid link provided!", ephemeral=True)
             return
 
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.cursor()
             author = interaction.user.name
             await cursor.execute(
@@ -608,7 +605,7 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
             await interaction.followup.send("Invalid link provided!", ephemeral=True)
             return
 
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.cursor()
             author = interaction.user.name
             await cursor.execute(

@@ -205,7 +205,7 @@ async def alignment_autocomplete(interaction: discord.Interaction, current: str
                                  ) -> typing.List[app_commands.Choice[str]]:
     data = []
     guild_id = interaction.guild_id
-    async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+    async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
         cursor = await db.cursor()
         current = unidecode(str.title(current))
         await cursor.execute(
@@ -225,7 +225,7 @@ async def blueprint_autocomplete(interaction: discord.Interaction, current: str
                                  ) -> typing.List[app_commands.Choice[str]]:
     data = []
     guild_id = interaction.guild_id
-    async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+    async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
         cursor = await db.cursor()
         current = unidecode(str.title(current))
         await cursor.execute(
@@ -242,7 +242,7 @@ async def improvement_subtype_autocomplete(interaction: discord.Interaction, cur
                                            ) -> typing.List[app_commands.Choice[str]]:
     data = []
     guild_id = interaction.guild_id
-    async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+    async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
         cursor = await db.cursor()
         current = unidecode(str.title(current))
         await cursor.execute(
@@ -259,7 +259,7 @@ async def blueprint_repurpose_autocomplete(interaction: discord.Interaction, cur
                                            ) -> typing.List[app_commands.Choice[str]]:
     data = []
     guild_id = interaction.guild_id
-    async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+    async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
         cursor = await db.cursor()
         current = unidecode(str.title(current))
         await cursor.execute(
@@ -276,7 +276,7 @@ async def blueprint_upgrade_autocomplete(interaction: discord.Interaction, curre
                                          ) -> typing.List[app_commands.Choice[str]]:
     data = []
     guild_id = interaction.guild_id
-    async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+    async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
         cursor = await db.cursor()
         current = unidecode(str.title(current))
         await cursor.execute(
@@ -294,7 +294,7 @@ async def government_autocompletion(
         interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice[str]]:
     data = []
     guild_id = interaction.guild_id
-    async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+    async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
         cursor = await db.cursor()
         current = unidecode(str.title(current))
         await cursor.execute(
@@ -312,7 +312,7 @@ async def hex_terrain_autocomplete(
         interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice[str]]:
     data = []
     guild_id = interaction.guild_id
-    async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+    async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
         cursor = await db.cursor()
         current = unidecode(str.title(current))
         await cursor.execute(
@@ -330,7 +330,7 @@ async def hex_improvement_autocomplete(
         interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice[str]]:
     data = []
     guild_id = interaction.guild_id
-    async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+    async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
         cursor = await db.cursor()
         current = unidecode(str.title(current))
         await cursor.execute(
@@ -347,7 +347,7 @@ async def leadership_autocomplete(
         interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice[str]]:
     data = []
     guild_id = interaction.guild_id
-    async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+    async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
         cursor = await db.cursor()
         current = unidecode(str.title(current))
 
@@ -365,7 +365,7 @@ async def leadership_autocomplete(
 async def kingdom_autocomplete(interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice[str]]:
     data = []
     guild_id = interaction.guild_id
-    async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+    async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
         cursor = await db.cursor()
         current = unidecode(str.title(current))
         await cursor.execute(
@@ -682,7 +682,7 @@ async def edit_a_kingdom(
         alignment: str) -> str:
     try:
         new_kingdom = old_kingdom_info.kingdom if not new_kingdom else new_kingdom
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.cursor()
             if alignment is not None:
                 await cursor.execute(
@@ -794,7 +794,7 @@ async def edit_a_kingdom(
 async def delete_a_kingdom(
         guild_id: int, author: int, kingdom: str) -> str:
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.cursor()
             await cursor.execute("DELETE FROM kb_Kingdoms WHERE Kingdom = ?", (kingdom,))
             await cursor.execute("DELETE FROM kb_Kingdoms_Custom WHERE Kingdom = ?", (kingdom,))
@@ -823,7 +823,7 @@ async def adjust_bp(
         amount: int,
         apply_unrest: bool = True) -> str:
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.cursor()
             return_string = f"The build points of {kingdom} have been increased by {amount}."
             await cursor.execute("SELECT Build_Points FROM kb_Kingdoms WHERE Kingdom = ?", (kingdom,))
@@ -865,7 +865,7 @@ async def adjust_sp(
                 decay_bool = configs.get('Decay')
         if decay_bool == 'False':
             return "Decay is disabled on this server."
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.cursor()
             await cursor.execute("SELECT Stabilization_Points FROM kb_Kingdoms WHERE Kingdom = ?", (kingdom,))
             kingdom_info = await cursor.fetchone()
@@ -891,7 +891,7 @@ async def adjust_sp(
 async def fetch_kingdom(
         guild_id: int,
         kingdom: str) -> typing.Union[KingdomInfo, None]:
-    async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+    async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
         cursor = await db.cursor()
         await cursor.execute(
             """SELECT Kingdom, Password, Government, Alignment, Control_DC, Build_Points, Size, Population, Economy, Loyalty, Stability, Fame, Unrest, Consumption FROM kb_Kingdoms WHERE Kingdom = ?""",
@@ -1478,7 +1478,7 @@ async def fetch_consequence_list(
 async def fetch_settlement(
         guild_id: int,
         settlement: str) -> typing.Union[SettlementInfo, None]:
-    async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+    async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
         cursor = await db.cursor()
         await cursor.execute(
             """SELECT Kingdom, Settlement, Size, Population, Corruption, Crime, Productivity, Law, Lore, Society, Danger, Defence, Base_Value, Spellcasting, Supply, Decay FROM kb_settlements WHERE Settlement = ?""",
@@ -1570,7 +1570,7 @@ async def fetch_settlement_event_list(
 async def fetch_building(
         guild_id: int,
         building: str) -> typing.Union[BuildingInfo, None]:
-    async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+    async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
         cursor = await db.cursor()
         await cursor.execute(
             """SELECT Full_Name, Type, Subtype, Quality, Build_Points, Lots, Economy, Loyalty, Stability, Fame, Unrest, Corruption, Crime, Productivity, Law, Lore, Society, Danger, Defence, Base_Value, Spellcasting, Supply, Settlement_Limit, District_Limit, Description, Upgrade, Discount, Tier FROM kb_Buildings_Blueprints WHERE Full_Name = ? OR Type = ?""",
@@ -1584,7 +1584,7 @@ async def fetch_building(
 async def fetch_hex_improvement(
         guild_id: int,
         full_name: str) -> typing.Union[HexImprovementInfo, None]:
-    async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+    async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
         cursor = await db.cursor()
         await cursor.execute(
             """SELECT Full_name, Type, Subtype, Quality, Build_Points, Economy, Loyalty, Stability, Unrest, Consumption, Defence, Taxation, Cavernous, Coastline, Desert, Forest, Hills, Jungle, Marsh, Mountains, Plains, Water, Source, Size FROM kb_Hexes_Improvements WHERE Full_Name = ?""",
@@ -1610,7 +1610,7 @@ async def update_leader(
 ) -> str:
     try:
 
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.cursor()
             await cursor.execute(
                 "SELECT Economy, Loyalty, Stability, Unrest FROM kb_Leadership WHERE Kingdom = ? AND Title = ?",
@@ -1645,7 +1645,7 @@ async def remove_leader(
         kingdom: str,
         title: str) -> str:
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.cursor()
             await cursor.execute(
                 "SELECT Economy, Loyalty, Stability, Unrest FROM kb_Leadership WHERE Kingdom = ? AND Title = ?",
@@ -1684,7 +1684,7 @@ async def claim_hex(
         kingdom: str,
         hex_id: int) -> str:
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.cursor()
             await cursor.execute("Update KB_Hexes set Kingdom = ? WHERE ID = ?", (kingdom, hex_id))
             await cursor.execute(
@@ -1706,7 +1706,7 @@ async def relinquish_hex(
         kingdom: str,
         hex_id: int) -> str:
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.cursor()
             await cursor.execute("Update kb_hexes set Kingdom = Null WHERE ID = ? and Kingdom = ?",
                                  (hex_id, kingdom))
@@ -1734,7 +1734,7 @@ async def add_an_improvement(
         iscost: bool = True
 ) -> str:
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.cursor()
             await cursor.execute(
@@ -1804,7 +1804,7 @@ async def degrade_improvement(
         amount: int
 ) -> str:
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.cursor()
             await cursor.execute(
                 "SELECT Amount FROM kb_hexes_constructed WHERE ID = ? and Full_Name = ?",
@@ -1839,7 +1839,7 @@ async def repurpose_an_improvement(
         new_full_name: str,
         amount: int):
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.cursor()
             if old_full_name == new_full_name:
                 return "The new improvement must be different from the old improvement."
@@ -1895,7 +1895,7 @@ async def add_building(
         size: int,
         amount) -> str:
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.cursor()
             await cursor.execute("SELECT Full_Name FROM KB_Buildings WHERE Full_Name = ? and Settlement = ?",
                                  (building_info.full_name, settlement))
@@ -1935,7 +1935,7 @@ async def remove_building(
         building_info: BuildingInfo,
         amount) -> tuple[str, int]:
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.cursor()
             await cursor.execute("SELECT Amount FROM KB_Buildings WHERE Full_Name = ? and Settlement = ?",
                                  (building_info.full_name, settlement))
@@ -1970,7 +1970,7 @@ async def claim_a_settlement(
         settlement: str,
         hex_id: int) -> str:
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.cursor()
 
             await cursor.execute(
@@ -1996,7 +1996,7 @@ async def relinquish_settlement(
         kingdom: str,
         settlement: str) -> str:
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.cursor()
             await cursor.execute("SELECT Kingdom, Hex_ID FROM kb_settlements WHERE Settlement = ?", (settlement,))
             settlement_info = await cursor.fetchone()
@@ -2085,7 +2085,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This is a player command to remove a kingdom THEY OWN from play"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("""select Kingdom, Password FROM kb_Kingdoms where Kingdom = ?""", (kingdom,))
                 result = await cursor.fetchone()
@@ -2156,7 +2156,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This modifies the number of build points in a kingdom"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Password, Build_Points FROM kb_Kingdoms WHERE Kingdom = ?", (kingdom,))
                 kingdom_results = await cursor.fetchone()
@@ -2281,7 +2281,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to set the severity of your edicts"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Password, Holiday, Promotion, Taxation FROM kb_Kingdoms WHERE Kingdom = ?", (kingdom,))
                 kingdom_results = await cursor.fetchone()
@@ -2329,7 +2329,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         await interaction.response.defer(thinking=True)
         try:
             embed = discord.Embed(title="Edict Information", color=0x00ff00, description="information about edicts")
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("""
                 SELECT severity,
@@ -2379,7 +2379,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to modify a leader's ability score or who is in charge of a kingdom"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Password, Size FROM kb_Kingdoms WHERE Kingdom = ?", (kingdom,))
                 kingdom_results = await cursor.fetchone()
@@ -2433,7 +2433,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to remove a leader and make it a vacant position"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Password FROM kb_Kingdoms WHERE Kingdom = ?", (kingdom,))
                 kingdom_results = await cursor.fetchone()
@@ -2456,7 +2456,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to claim a hex for a kingdom"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Password, Region FROM kb_Kingdoms WHERE Kingdom = ?", (kingdom,))
                 kingdom_results = await cursor.fetchone()
@@ -2493,7 +2493,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to relinquish a hex for a kingdom"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Password FROM kb_Kingdoms WHERE Kingdom = ?", (kingdom,))
                 kingdom_results = await cursor.fetchone()
@@ -2529,7 +2529,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to add an improvement to a hex"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 db.row_factory = aiosqlite.Row
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Password, Build_Points, Size FROM kb_Kingdoms WHERE Kingdom = ?",
@@ -2571,7 +2571,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to remove an improvement from a hex"""
         await interaction.response.defer(thinking=True)
         try:
-            async with (aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite")) as db:
+            async with (aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite")) as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Password FROM kb_Kingdoms WHERE Kingdom = ?", (kingdom,))
                 kingdom_results = await cursor.fetchone()
@@ -2613,7 +2613,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to repurpose an improvement in a hex"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Password FROM kb_Kingdoms WHERE Kingdom = ?", (kingdom,))
                 kingdom_results = await cursor.fetchone()
@@ -2643,7 +2643,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to claim a settlement for a kingdom"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Password FROM kb_Kingdoms WHERE Kingdom = ?", (kingdom,))
                 kingdom_results = await cursor.fetchone()
@@ -2688,7 +2688,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to Edit a settlement for a kingdom"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Password FROM kb_Kingdoms WHERE Kingdom = ?", (kingdom,))
                 kingdom_results = await cursor.fetchone()
@@ -2729,7 +2729,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to relinquish a settlement for a kingdom"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Password FROM kb_Kingdoms WHERE Kingdom = ?", (kingdom,))
                 kingdom_results = await cursor.fetchone()
@@ -2755,7 +2755,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to build a building in a settlement"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Password, Build_Points, population FROM kb_Kingdoms WHERE Kingdom = ?",
                                      (kingdom,))
@@ -2847,7 +2847,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to destroy a building in a settlement"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Password, Build_Points FROM kb_Kingdoms WHERE Kingdom = ?", (kingdom,))
                 kingdom_results = await cursor.fetchone()
@@ -2888,7 +2888,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to upgrade a building in a settlement"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Password, Build_Points FROM kb_Kingdoms WHERE Kingdom = ?", (kingdom,))
                 kingdom_results = await cursor.fetchone()
@@ -2942,7 +2942,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to repurpose a building in a settlement"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Password, Build_Points FROM kb_Kingdoms WHERE Kingdom = ?", (kingdom,))
                 kingdom_results = await cursor.fetchone()
@@ -3007,7 +3007,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to display and handle kingdom events"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Password FROM kb_Kingdoms WHERE Kingdom = ?", (kingdom,))
                 kingdom_results = await cursor.fetchone()
@@ -3050,7 +3050,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to request a trade route to another kingdom"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Password FROM kb_Kingdoms WHERE Kingdom = ?", (kingdom,))
                 kingdom_results = await cursor.fetchone()
@@ -3203,7 +3203,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to cancel a trade route with another kingdom"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Password FROM kb_Kingdoms WHERE Kingdom = ?", (kingdom,))
                 kingdom_results = await cursor.fetchone()
@@ -3291,7 +3291,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to bid for a portion of the population pool"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Password, Build_Points, Region FROM kb_Kingdoms WHERE Kingdom = ?",
                                      (kingdom,))
@@ -3327,7 +3327,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to display the current population bid"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Population FROM KB_Population WHERE region = ?", (region,))
                 region = await cursor.fetchone()
@@ -3371,7 +3371,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to create an army"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Password FROM kb_Kingdoms WHERE Kingdom = ?", (kingdom,))
                 kingdom_results = await cursor.fetchone()
@@ -3408,7 +3408,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to delete an army"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Password FROM kb_Kingdoms WHERE Kingdom = ?", (kingdom,))
                 kingdom_results = await cursor.fetchone()
@@ -3437,7 +3437,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
     async def display_kingdom(self, interaction: discord.Interaction, kingdom: typing.Optional[str], page: int = 0):
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 if kingdom:
                     await cursor.execute("SELECT Kingdom FROM KB_Kingdoms")
@@ -3487,7 +3487,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to display settlement information"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Kingdom FROM KB_Kingdoms")
                 kingdom_results = await cursor.fetchall()
@@ -3541,7 +3541,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
     async def display_hex(self, interaction: discord.Interaction, region: str, kingdom: str = None, page: int = 0):
         try:
             await interaction.response.defer(thinking=True)
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 if kingdom:
                     await cursor.execute("SELECT Kingdom FROM KB_Kingdoms")
@@ -3572,7 +3572,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to display buildable hex improvements"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Count(Kingdom) FROM KB_Kingdoms")
                 kingdom_results = await cursor.fetchone()
@@ -3596,7 +3596,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to display settlement blueprints"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 if kingdom:
                     await cursor.execute("SELECT Kingdom FROM KB_Kingdoms")
@@ -3628,7 +3628,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to display built settlement buildings"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 if settlement:
                     await cursor.execute("SELECT Settlement FROM KB_Settlements")
@@ -3660,7 +3660,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
         """This command is used to display army information"""
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 if kingdom:
                     await cursor.execute("SELECT Kingdom FROM KB_Kingdoms")
@@ -3714,7 +3714,7 @@ class KingdomView(shared_functions.DualView):
     async def update_results(self):
         """Fetch the history of prestige request  for the current page."""
         try:
-            async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("""
                 SELECT Kingdom FROM KB_Kingdoms 
@@ -3728,7 +3728,7 @@ class KingdomView(shared_functions.DualView):
 
     async def create_embed(self):
         """Create the embed for the titles."""
-        async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
             if self.view_type == 1:
                 for kingdom in self.results:
                     self.kingdom = kingdom[0]
@@ -3827,7 +3827,7 @@ class KingdomView(shared_functions.DualView):
     async def get_max_items(self):
         """Get the total number of titles."""
         if self.max_items is None:
-            async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
                 cursor = await db.execute("SELECT COUNT(*) FROM KB_Kingdoms")
                 count = await cursor.fetchone()
                 self.max_items = count[0]
@@ -3868,7 +3868,7 @@ class SettlementView(shared_functions.DualView):
     async def update_results(self):
         """Fetch the history of prestige request  for the current page."""
         try:
-            async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 if self.kingdom:
                     await cursor.execute("""
@@ -3888,7 +3888,7 @@ class SettlementView(shared_functions.DualView):
 
     async def create_embed(self):
         """Create the embed for the titles."""
-        async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
             if self.view_type == 1:
                 for settlement in self.results:
                     settlement = settlement[0]
@@ -3974,7 +3974,7 @@ class SettlementView(shared_functions.DualView):
     async def get_max_items(self):
         """Get the total number of titles."""
         if self.max_items is None:
-            async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
                 cursor = await db.execute("SELECT COUNT(*) FROM KB_Kingdoms")
                 count = await cursor.fetchone()
                 self.max_items = count[0]
@@ -4008,7 +4008,7 @@ class HexView(shared_functions.ShopView):
         Fetch hex rows for the current page for the given kingdom.
         """
         try:
-            async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 if self.kingdom:
                     statement = """
@@ -4063,7 +4063,7 @@ class HexView(shared_functions.ShopView):
                 desc = f"Settlement: {settlement}\n"
             else:
                 desc = f"Hex ID: {hex_id}\n"
-                async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+                async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
                     cursor = await db.cursor()
                     await cursor.execute(
                         "SELECT Full_Name, Type, Subtype, Amount FROM KB_Hexes_Constructed WHERE ID = ?", (hex_id,))
@@ -4082,7 +4082,7 @@ class HexView(shared_functions.ShopView):
         Return the total number of hexes for the given kingdom.
         """
         if self.max_items is None:
-            async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
                 if self.kingdom:
                     cursor = await db.execute(
                         "SELECT COUNT(*) FROM kb_hexes WHERE region = ? and (Kingdom = ? or Kingdom = Null)",
@@ -4124,7 +4124,7 @@ class ImprovementView(shared_functions.ShopView):
             FROM kb_Hexes_Improvements
             LIMIT ? OFFSET ?
         """
-        async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
             cursor = await db.execute(statement, (self.limit, self.offset))
             self.results = await cursor.fetchall()
 
@@ -4186,7 +4186,7 @@ class ImprovementView(shared_functions.ShopView):
         Return the total number of improvements in kb_Hexes_Improvements.
         """
         if self.max_items is None:
-            async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
                 cursor = await db.execute("SELECT COUNT(*) FROM kb_Hexes_Improvements")
                 count = await cursor.fetchone()
                 self.max_items = count[0]
@@ -4246,7 +4246,7 @@ class BlueprintView(shared_functions.ShopView):
             statement += "Order by Full_Name Limit ? Offset ?"
         else:
             statement += "Order by Subtype desc, Full_Name LIMIT ? OFFSET ?"
-        async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
             if self.kingdom:
                 cursor = await db.execute(statement, (self.kingdom, self.limit, self.offset))
             else:
@@ -4297,7 +4297,7 @@ class BlueprintView(shared_functions.ShopView):
         Return the total number of building blueprints in kb_Buildings_Blueprints.
         """
         if self.max_items is None:
-            async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
                 if self.kingdom:
                     cursor = await db.execute(
                         "SELECT COUNT(*) FROM kb_Buildings_Permits WHERE Kingdom = ?", (self.kingdom,)
@@ -4368,7 +4368,7 @@ class SettlementBuildingsView(shared_functions.ShopView):
                 Order by Subtype desc, Full_Name
                 LIMIT ? OFFSET ?
             """
-        async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
             cursor = await db.execute(statement, (self.settlement, self.limit, self.offset))
             self.results = await cursor.fetchall()
 
@@ -4417,7 +4417,7 @@ class SettlementBuildingsView(shared_functions.ShopView):
         Return the total number of building blueprints in kb_Buildings_Blueprints.
         """
         if self.max_items is None:
-            async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
                 cursor = await db.execute("SELECT COUNT(*) FROM KB_Buildings WHERE Settlement = ?", (self.settlement,))
                 count = await cursor.fetchone()
                 self.max_items = count[0]
@@ -4450,7 +4450,7 @@ class ArmyView(shared_functions.ShopView):
             WHERE Kingdom = ?
             LIMIT ? OFFSET ?
         """
-        async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
             cursor = await db.execute(statement, (self.kingdom, self.limit, self.offset))
             self.results = await cursor.fetchall()
 
@@ -4481,7 +4481,7 @@ class ArmyView(shared_functions.ShopView):
         Return the total number of building blueprints in kb_Buildings_Blueprints.
         """
         if self.max_items is None:
-            async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
                 cursor = await db.execute("SELECT COUNT(*) FROM KB_Armies where Kingdom = ?", (self.kingdom,))
                 count = await cursor.fetchone()
                 self.max_items = count[0]
@@ -4702,7 +4702,7 @@ class KingdomEventView(discord.ui.View):
                                 WHERE Kingdom = ? AND Duration > 0 AND (Check_A IS NOT NULL OR Check_B IS NOT NULL)
                                 Limit ? Offset ?
                         """
-        async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
             cursor = await db.cursor()
             await cursor.execute(statement, (self.kingdom, self.limit, self.offset))
             self.results = await cursor.fetchall()
@@ -4736,7 +4736,7 @@ class KingdomEventView(discord.ui.View):
             field_content += f"\r\n{effect}"
             field_content += f"\r\n**{check_b}**: {status_dict[check_a_status]}" if check_a else ""
             field_content += f"\r\n**{check_b}**: {status_dict[check_b_status]}" if check_b else ""
-            async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
                 cursor = await db.execute(
                     "SELECT Name, Severity, Type, Value, Reroll FROM KB_Events_Consequence where Name = ? Order BY Severity asc",
                     (name,))
@@ -4774,7 +4774,7 @@ class KingdomEventView(discord.ui.View):
                             FROM KB_Events_Active 
                             WHERE Kingdom = ? AND Duration > 0
                         """
-        async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
             cursor = await db.execute(statement, (self.kingdom,))
             count = await cursor.fetchone()
             return count[0]
@@ -4830,7 +4830,7 @@ class CheckButton(discord.ui.View):
 
     async def handle_button_check(self, interaction: discord.Interaction, check: str, version: str):
         try:
-            async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 if version == "A":
                     await cursor.execute("SELECT Check_A_Status, Name from KB_Events_Active where ID = ?",
@@ -4969,7 +4969,7 @@ class TradeView(shared_functions.RecipientAcknowledgementView):
             color=discord.Color.green()
         )
         # Additional logic such as notifying the requester
-        async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as conn:
+        async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as conn:
             cursor = await conn.cursor()
             await cursor.execute("""
             INSERT INTO KB_Trade (

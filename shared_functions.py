@@ -46,7 +46,7 @@ class ConfigCache:
         """Load configurations for all guilds from the database into the cache."""
         try:
             async with self.lock:
-                async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+                async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
                     cursor = await db.execute("SELECT Identifier, search FROM Admin")
                     rows = await cursor.fetchall()
                     self.cache = {}
@@ -65,7 +65,7 @@ class ConfigCache:
     async def update_setting(self, guild_id: int, key: str, value: Any):
         """Update a configuration setting for a guild in the database and cache."""
         async with self.lock:
-            async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
                 await db.execute("REPLACE INTO configuration_table (Search, Identifier) VALUES (?, ?)",
                                  (guild_id, key, str(value))
                                  )
@@ -158,7 +158,7 @@ async def stg_character_select_autocompletion(
         current: str) -> typing.List[app_commands.Choice[str]]:
     data = []
     guild_id = interaction.guild_id
-    db = sqlite3.connect(f"Pathparser_{guild_id}.sqlite")
+    db = sqlite3.connect(f"pathparser_{guild_id}.sqlite")
     cursor = db.cursor()
     current = unidecode(str.title(current))
     cursor.execute(
@@ -218,7 +218,7 @@ async def own_character_select_autocompletion(
     if cached_result is not None:
         character_list = cached_result
     else:
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as conn:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as conn:
             cursor = await conn.cursor()
             await cursor.execute(
                 """
@@ -256,7 +256,7 @@ async def character_select_autocompletion(interaction: discord.Interaction, curr
     if cached_result is not None:
         character_list = cached_result
     else:
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as conn:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as conn:
             cursor = await conn.cursor()
             await cursor.execute(
                 """
@@ -329,8 +329,8 @@ async def get_plots_autocompletion(
         # Fetch data from World Anvil API
         try:
             client = WaClient(
-                'Pathparser',
-                'https://github.com/Solfyrism/Pathparser',
+                'pathparser',
+                'https://github.com/Solfyrism/pathparser',
                 'V1.1',
                 os.getenv('WORLD_ANVIL_API'),
                 os.getenv(f'WORLD_ANVIL_{guild_id}')
@@ -380,8 +380,8 @@ async def get_precreated_plots_autocompletion(
     """This is a test command for the wa command."""
     data = []
     client = WaClient(
-        'Pathparser',
-        'https://github.com/Solfyrism/Pathparser',
+        'pathparser',
+        'https://github.com/Solfyrism/pathparser',
         'V1.1',
         os.getenv('WORLD_ANVIL_API'),
         os.getenv('WORLD_ANVIL_USER')
@@ -399,7 +399,7 @@ async def session_autocompletion(
         current: str) -> typing.List[app_commands.Choice[str]]:
     data = []
     guild_id = interaction.guild_id
-    db = sqlite3.connect(f"Pathparser_{guild_id}.sqlite")
+    db = sqlite3.connect(f"pathparser_{guild_id}.sqlite")
     cursor = db.cursor()
     current = unidecode(str.title(current))
     cursor.execute(
@@ -420,7 +420,7 @@ async def group_id_autocompletion(
         current: str) -> typing.List[app_commands.Choice[str]]:
     data = []
     guild_id = interaction.guild_id
-    db = sqlite3.connect(f"Pathparser_{guild_id}.sqlite")
+    db = sqlite3.connect(f"pathparser_{guild_id}.sqlite")
     cursor = db.cursor()
     current = unidecode(str.title(current))
     cursor.execute("SELECT Group_ID, Group_Name  FROM Sessions_Group WHERE Group_Name LIKE ? Limit 15",
@@ -441,8 +441,8 @@ async def get_plots_autocomplete(
     """This is a test command for the wa command."""
     data = []
     client = WaClient(
-        'Pathparser',
-        'https://github.com/Solfyrism/Pathparser',
+        'pathparser',
+        'https://github.com/Solfyrism/pathparser',
         'V1.1',
         os.getenv('WORLD_ANVIL_API'),
         os.getenv('WORLD_ANVIL_USER')
@@ -461,7 +461,7 @@ async def player_session_autocomplete(
         current: str) -> typing.List[app_commands.Choice[str]]:
     data = []
     guild_id = interaction.guild_id
-    db = sqlite3.connect(f"Pathparser_{guild_id}.sqlite")
+    db = sqlite3.connect(f"pathparser_{guild_id}.sqlite")
     cursor = db.cursor()
     current = unidecode(str.title(current))
     cursor.execute(
@@ -482,7 +482,7 @@ async def player_session_autocomplete(
 async def fame_autocomplete(interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice[str]]:
     data = []
     guild_id = interaction.guild_id
-    async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+    async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
         cursor = await db.cursor()
         current = unidecode(str.title(current))
         await cursor.execute(
@@ -498,7 +498,7 @@ async def fame_autocomplete(interaction: discord.Interaction, current: str) -> t
 
 async def title_autocomplete(interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice[str]]:
     data = []
-    async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+    async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
         cursor = await db.cursor()
         current = unidecode(str.title(current))
         await cursor.execute(
@@ -520,7 +520,7 @@ async def settings_autocomplete(
     guild_id = interaction.guild.id
     current = unidecode(current.lower())
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             # Correct parameterized query
 
             cursor = await db.execute("SELECT Identifier FROM Admin WHERE Identifier LIKE ? LIMIT 20",
@@ -544,7 +544,7 @@ async def rp_store_autocomplete(
     guild_id = interaction.guild.id
     current = unidecode(current.lower())
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             # Correct parameterized query
             cursor = await db.execute("SELECT name FROM rp_store_items WHERE name LIKE ? LIMIT 20",
                                       (f"%{current}%",))
@@ -568,7 +568,7 @@ async def rp_inventory_autocomplete(
     current = unidecode(current.lower())
 
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             # Correct parameterized query
             cursor = await db.execute(
                 "SELECT item_name FROM rp_players_items WHERE item_name LIKE ? and player_id = ? LIMIT 20",
@@ -591,7 +591,7 @@ async def character_embed(
         character_name: str,
         guild: discord.Guild) -> Union[Tuple[discord.Embed, str, int], str]:
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild.id}.sqlite") as conn:
+        async with aiosqlite.connect(f"pathparser_{guild.id}.sqlite") as conn:
             conn.row_factory = aiosqlite.Row
             cursor = await conn.cursor()
             async with config_cache.lock:
@@ -887,7 +887,7 @@ async def update_character(guild_id: int, change: UpdateCharacterData) -> tuple[
         values.append(change.character_name)
 
         # Execute the SQL statement
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.cursor()
 
             await cursor.execute(sql_statement, values)
@@ -1217,7 +1217,7 @@ def fetch_timecard_data_from_db(guild_id, player_name, day, utc_offset):
         "17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30",
         "21:00", "21:30", "22:00", "22:30", "23:00", "23:30", "24:00", "24:30"
     ]
-    conn = sqlite3.connect(f"Pathparser_{guild_id}.sqlite")
+    conn = sqlite3.connect(f"pathparser_{guild_id}.sqlite")
     cursor = conn.cursor()
 
     if utc_offset > 0:
@@ -1382,7 +1382,7 @@ async def create_timecard_plot(guild_id, player_name, day, utc_offset):
         plt.tight_layout(rect=[0, 0, 0.95, 1])  # Adjust the right margin to fit the color bar
 
     # Save the plot as an image file
-    plt.savefig('C:\\Pathparser\\plots\\timecard_plot.png')  # Ensure the path is correct for your system
+    plt.savefig('C:\\pathparser\\plots\\timecard_plot.png')  # Ensure the path is correct for your system
     plt.close()
 
 
@@ -1494,7 +1494,7 @@ async def settlement_autocomplete(interaction: discord.Interaction, current: str
                                   ) -> typing.List[app_commands.Choice[str]]:
     data = []
     guild_id = interaction.guild_id
-    async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+    async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
         cursor = await db.cursor()
         current = unidecode(str.title(current))
         await cursor.execute(
@@ -1510,7 +1510,7 @@ async def settlement_autocomplete(interaction: discord.Interaction, current: str
 
 async def region_autocomplete(interaction: discord.Interaction, current: str) -> typing.List[app_commands.Choice[str]]:
     data = []
-    async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+    async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
         cursor = await db.cursor()
         current = unidecode(str.title(current))
         await cursor.execute(
@@ -1647,7 +1647,7 @@ async def complex_validate_hammertime(
     Tuple[bool, Tuple[bool, bool, Tuple[str, str, str, str]]], Tuple[bool, str]]:
     try:
         # Attempt to retrieve the user's timezone
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.cursor()
             await cursor.execute(
                 "SELECT UTC_Offset FROM Player_Timecard WHERE Player_Name = ?", (author_name,)
@@ -1708,7 +1708,7 @@ def validate_worldanvil_link(guild_id: int, article_id: str) -> (
 
         client = WaClient(
             'pathparser',
-            'https://github.com/Solfyrism/Pathparser',
+            'https://github.com/Solfyrism/pathparser',
             'V1.1',
             api_key,
             user_id
@@ -1746,7 +1746,7 @@ async def put_wa_article(guild_id: int, template: str, category: str, title: str
 
         client = WaClient(
             'pathparser',
-            'https://github.com/Solfyrism/Pathparser',
+            'https://github.com/Solfyrism/pathparser',
             'V1.1',
             api_key,
             user_id
@@ -1796,7 +1796,7 @@ async def patch_wa_article(guild_id: int, article_id: str, overview: str) -> Opt
 
         client = WaClient(
             'pathparser',
-            'https://github.com/Solfyrism/Pathparser',
+            'https://github.com/Solfyrism/pathparser',
             'V1.1',
             api_key,
             user_id
@@ -1823,13 +1823,13 @@ async def put_wa_report(guild_id: int, session_id: int, overview: str, author: s
         try:
             client = WaClient(
                 'pathparser',
-                'https://github.com/Solfyrism/Pathparser',
+                'https://github.com/Solfyrism/pathparser',
                 'V1.1',
                 os.getenv('WORLD_ANVIL_API'),
                 os.getenv('WORLD_ANVIL_USER')
             )
             world_id = 'f7a60480-ea15-4867-ae03-e9e0c676060a'
-            async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 async with config_cache.lock:
                     configs = config_cache.cache.get(guild_id)
@@ -1941,7 +1941,7 @@ async def patch_wa_report(guild_id: int, session_id: int, overview: str) -> Opti
     try:
         client = WaClient(
             'pathparser',
-            'https://github.com/Solfyrism/Pathparser',
+            'https://github.com/Solfyrism/pathparser',
             'V1.1',
             os.getenv('WORLD_ANVIL_API'),
             os.getenv('WORLD_ANVIL_USER')
@@ -1949,7 +1949,7 @@ async def patch_wa_report(guild_id: int, session_id: int, overview: str) -> Opti
         world_id = 'f7a60480-ea15-4867-ae03-e9e0c676060a'
 
         # Establish a new database connection
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as conn:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as conn:
             cursor = await conn.cursor()
 
             # Fetch session information

@@ -29,7 +29,7 @@ intents = discord.Intents.default()
 intents.typing = True
 intents.message_content = True
 intents.members = True
-os.chdir("C:\\pathparser")
+os.chdir("E:\\pathparser")
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 

@@ -41,7 +41,7 @@ roleplay_info_cache = RoleplayInfoCache()
 async def use_item(interaction: discord.Interaction, item_name: typing.Optional[str], item_id: typing.Optional[int] = None):
     guild_id = interaction.guild.id
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.execute(
                 "SELECT actions_1_type, actions_1_subtype, actions_1_behavior, actions_2_type, actions_2_subtype, actions_2_behavior, actions_3_type, actions_3_subtype, actions_3_behavior FROM RP_Store_Items WHERE name = ? or item_id = ?",
                 (item_name, item_id))
@@ -85,7 +85,7 @@ async def handle_action(interaction: discord.Interaction, actions_type: str, act
                 else:
                     return "User does not have role and does not need it removed."
         else:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild.id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as db:
                 cursor = await db.cursor()
                 if int(actions_type) == 2:
                     if int(actions_subtype) == 1:
@@ -128,7 +128,7 @@ async def handle_action(interaction: discord.Interaction, actions_type: str, act
 
 async def handle_requirements(requirements_type, requirements_pair, interaction, user_id, balance):
     try:
-        async with aiosqlite.connect(f"Pathparser_{interaction.guild.id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as db:
             cursor = await db.cursor()
 
             if requirements_type == 1:
@@ -237,7 +237,7 @@ async def handle_rp_message(message):
         now = datetime.utcnow()
         logging.debug(f"Processing message at {now.isoformat()} from user {user_id} ({user_name})")
 
-        async with aiosqlite.connect(f"Pathparser_{message.guild.id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{message.guild.id}.sqlite") as db:
             # Fetch user data
             cursor = await db.execute(
                 "SELECT balance, last_post_time, recent_posts FROM RP_Players WHERE user_id = ?",
@@ -394,7 +394,7 @@ async def rp_inventory_autocomplete(
     guild_id = interaction.guild.id
     current = unidecode(current.lower())
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             # Correct parameterized query
             cursor = await db.execute(
                 "SELECT Item_Name FROM rp_players_items WHERE player_id = ? and item_name LIKE ? LIMIT 20",
@@ -584,7 +584,7 @@ class RPCommands(commands.Cog, name='RP'):
             user_id = interaction.user.id
         else:
             user_id = user.id
-        async with aiosqlite.connect(f"Pathparser_{interaction.guild.id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as db:
             cursor = await db.cursor()
             await cursor.execute("SELECT balance FROM RP_Players WHERE user_id = ?", (user_id,))
             user_data = await cursor.fetchone()
@@ -622,7 +622,7 @@ class RPCommands(commands.Cog, name='RP'):
             await interaction.followup.send("You can't buy less than 1 item.")
             return
 
-        async with aiosqlite.connect(f"Pathparser_{interaction.guild.id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as db:
             # Fetch user balance
             user_data = await fetch_user_balance(db, user_id)
             if not user_data:
@@ -702,7 +702,7 @@ class RPCommands(commands.Cog, name='RP'):
                 settings = roleplay_info_cache.cache[interaction.guild.id]
                 reward_name = settings.reward_name if settings.reward_name else "coins"
                 reward_emoji = settings.reward_emoji if settings.reward_emoji else "<:RPCash:884166313260503060>"
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild.id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as db:
                 cursor = await db.execute("SELECT Item_Quantity FROM RP_Players_Items WHERE Player_ID = ?", (user_id,))
                 user_item_data = await cursor.fetchone()
                 cursor = await db.execute("SELECT balance FROM RP_Players WHERE user_id = ?", (user_id,))
@@ -742,7 +742,7 @@ class RPCommands(commands.Cog, name='RP'):
     async def roleplay_use(self, interaction: discord.Interaction, item_name: str, amount: int = 1):
         await interaction.response.defer(thinking=True)
         user_id = interaction.user.id
-        async with aiosqlite.connect(f"Pathparser_{interaction.guild.id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as db:
             cursor = await db.cursor()
             await cursor.execute("SELECT Custom_message, usable from RP_Store_Items WHERE name = ?", (item_name,))
             item_data = await cursor.fetchone()
@@ -796,7 +796,7 @@ class RPCommands(commands.Cog, name='RP'):
                 settings = roleplay_info_cache.cache[interaction.guild.id]
                 reward_name = settings.reward_name if settings.reward_name else "coins"
                 reward_emoji = settings.reward_emoji if settings.reward_emoji else "<:RPCash:884166313260503060>"
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild.id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as db:
                 cursor = await db.execute("SELECT balance FROM RP_Players WHERE user_id = ?", (sender_id,))
                 sender_data = await cursor.fetchone()
                 if sender_data:
@@ -872,7 +872,7 @@ class RPCommands(commands.Cog, name='RP'):
     async def list_rp_store(self, interaction: discord.Interaction, page_number: int = 1):
         await interaction.response.defer(thinking=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild.id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT COUNT(name) FROM rp_store_items")
                 item_count = await cursor.fetchone()
@@ -988,7 +988,7 @@ class LeaderboardView(shared_functions.ShopView):
                         FROM RP_Players
                         ORDER BY Balance Desc  Limit ? Offset ?
                     """
-        async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
             cursor = await db.execute(statement, (self.limit, self.offset - 1))
             self.results = await cursor.fetchall()
 
@@ -1018,7 +1018,7 @@ class LeaderboardView(shared_functions.ShopView):
     async def get_max_items(self):
         """Get the total number of titles."""
         if self.max_items is None:
-            async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
                 cursor = await db.execute("SELECT COUNT(*) FROM RP_Players")
                 count = await cursor.fetchone()
                 self.max_items = count[0]
@@ -1044,7 +1044,7 @@ class InventoryView(shared_functions.ShopView):
                         FROM RP_Players_Items RPI left join RP_Store_Items RPS on RPI.Item_Name = RPS.Name
                         WHERE RPI.Player_ID = ? ORDER BY item_Name Limit ? Offset ?
                     """
-        async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
             cursor = await db.execute(statement, (self.member.id, self.limit, self.offset))
             self.results = await cursor.fetchall()
 
@@ -1067,7 +1067,7 @@ class InventoryView(shared_functions.ShopView):
     async def get_max_items(self):
         """Get the total number of titles."""
         if self.max_items is None:
-            async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
                 cursor = await db.execute("SELECT COUNT(*) FROM RP_Players_Items WHERE Player_ID = ?",
                                           (self.member.id,))
                 count = await cursor.fetchone()
@@ -1091,7 +1091,7 @@ class RPStoreView(shared_functions.ShopView):
             FROM RP_Store_Items
             ORDER BY Item_ID ASC LIMIT ? OFFSET ?
         """
-        async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
             cursor = await db.execute(statement, (self.limit, self.offset - 1))
             self.results = await cursor.fetchall()
 
@@ -1158,7 +1158,7 @@ class RPStoreView(shared_functions.ShopView):
     async def get_max_items(self):
         """Get the total number of levels."""
         if self.max_items is None:
-            async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
                 cursor = await db.execute("SELECT COUNT(*) FROM RP_Store_Items")
                 count = await cursor.fetchone()
                 self.max_items = count[0]

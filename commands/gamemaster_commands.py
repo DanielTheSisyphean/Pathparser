@@ -19,9 +19,6 @@ import shared_functions
 from scheduler_utils import scheduled_jobs, remind_users, scheduler, schedule_session_reminders
 from shared_functions import name_fix
 
-# *** GLOBAL VARIABLES *** #
-os.chdir("C:\\pathparser")
-
 
 async def create_group_timecard_plot(dataset, day, user_id):
     try:
@@ -69,7 +66,7 @@ async def create_group_timecard_plot(dataset, day, user_id):
         plt.grid(True, linestyle='--', alpha=0.7)
 
         # Save the plot
-        plt.savefig(f'C:\\Pathparser\\plots\\group_{user_id}_plot.png')  # Ensure the path is correct for your system
+        plt.savefig(f'C:\\pathparser\\plots\\group_{user_id}_plot.png')  # Ensure the path is correct for your system
         plt.close()
 
     except Exception as e:
@@ -90,7 +87,7 @@ async def session_reward_reversal(
         return f'invalid session ID of {session_id}'
 
     else:
-        async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as conn:
+        async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as conn:
             cursor = await conn.cursor()
 
             try:
@@ -284,7 +281,7 @@ async def session_reward_calculation(
         pre_session_tier: int, pre_session_gold, source: str) -> (
         Union[tuple[shared_functions.CharacterChange, int], str]):
     try:
-        async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as conn:
+        async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as conn:
             cursor = await conn.cursor()
 
             await cursor.execute(
@@ -509,7 +506,7 @@ async def create_session(
         session_info: SessionBaseInfo) -> int:
     try:
 
-        async with aiosqlite.connect(f"Pathparser_{session_info.guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{session_info.guild_id}.sqlite") as db:
             cursor = await db.cursor()
             await cursor.execute(
                 f"""INSERT INTO Sessions (
@@ -548,7 +545,7 @@ async def build_edit_info(
         session_id: int
 ) -> Optional[tuple[SessionBaseInfo, int, int]]:
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.cursor()
 
             await cursor.execute(
@@ -589,7 +586,7 @@ async def build_edit_info(
 async def edit_session(
         session_info: SessionBaseInfo, session_id: int) -> bool:  # Overview, description
     try:
-        async with aiosqlite.connect(f"Pathparser_{session_info.guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{session_info.guild_id}.sqlite") as db:
             cursor = await db.cursor()
             await cursor.execute(
                 "UPDATE Sessions SET Session_Name = ?, Session_Range = ?, Session_Range_ID = ?, Play_Location = ?, hammer_time = ?, game_link = ?, Overview = ?, Description = ?, Player_Limit = ?, Related_plot = ?, overflow = ?, region = ? WHERE Session_ID = ?",
@@ -610,7 +607,7 @@ async def delete_session(
         session_id: int,
         guild_id: int) -> None:
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.cursor()
 
             await cursor.execute("UPDATE Sessions SET IsActive = 0 WHERE Session_ID = ?", (session_id,))
@@ -626,7 +623,7 @@ async def validate_milestone_system_overflow(
         session_range_id: int,
         overflow: int) -> Union[tuple[discord.Role, int, int], None]:
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild.id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild.id}.sqlite") as db:
             cursor = await db.cursor()
             # overflow 1 is current range only, 2 includes next level bracket, 3 includes lower level bracket, 4 ignores role requirements
 
@@ -698,7 +695,7 @@ async def validate_region_system_overflow(
         session_range_id: int,
         overflow: int) -> Union[tuple[discord.Role, int, int], None]:
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild.id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild.id}.sqlite") as db:
             cursor = await db.cursor()
             # overflow 1 is current range only, 2 includes next level bracket, 3 includes lower level bracket, 4 ignores role requirements
 
@@ -831,7 +828,7 @@ async def player_signup(guild_id: int, session_name: str, session_id: int, chara
                         warning_duration: typing.Optional[int]) -> bool:
     warning_duration = -1 if warning_duration is None else warning_duration
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.cursor()
 
             await cursor.execute(
@@ -849,7 +846,7 @@ async def player_signup(guild_id: int, session_name: str, session_id: int, chara
 
 async def player_accept(guild_id: int, session_name, session_id: int, player_id: int) -> bool:
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.cursor()
 
             updated = await cursor.execute(
@@ -871,7 +868,7 @@ async def player_accept(guild_id: int, session_name, session_id: int, player_id:
 
 async def player_accept_specific(guild_id: int, session_name: str, session_id: int, character_name: str) -> bool:
     try:
-        async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.cursor()
 
             updated = await cursor.execute(
@@ -986,7 +983,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
         acceptance = 1 if acceptance == 1 else acceptance.value
         try:
 
-            async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute(
                     "SELECT Character_Name, Prestige_Cost, Item_Name from A_Audit_Prestige Where Transaction_ID = ?",
@@ -1064,7 +1061,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
         guild = interaction.guild
         await interaction.response.defer(thinking=True, ephemeral=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute("SELECT Thread_ID, Fame, Prestige from Player_Characters where Character_Name = ?",
                                      (character,))
@@ -1174,7 +1171,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
             # if not plot_valid:
                 # await interaction.followup.send(f"Please provide a valid plot link. You submitted {plot}")
                 # return
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 if group_id:
                     await cursor.execute("SELECT Player_Name from Sessions_Group_Presign WHERE Group_ID = ?",
@@ -1456,7 +1453,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
         """Delete an ACTIVE Session."""
         await interaction.response.defer(thinking=True, ephemeral=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute(
                     "SELECT Message, Session_Thread, Session_Name, Hammer_Time from Sessions WHERE Session_ID = ? AND GM_Name = ? AND IsActive = 1 ORDER BY Created_Time Desc Limit 1",
@@ -1530,7 +1527,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                 await interaction.followup.send(
                     "Please provide at least one method to accept players into the session (players, specific character, or randomize).")
             else:
-                async with aiosqlite.connect(f"Pathparser_{interaction.guild.id}.sqlite") as db:
+                async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as db:
                     cursor = await db.cursor()
                     await cursor.execute(
                         "SELECT Session_Name, Play_location, hammer_time, game_link, Session_thread, isactive FROM Sessions WHERE Session_ID = ? AND GM_Name = ?",
@@ -1675,7 +1672,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
     async def remove(self, interaction: discord.Interaction, session_id: int, player: discord.Member):
         await interaction.response.defer(thinking=True, ephemeral=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute(
                     "SELECT Session_Name, Play_location, hammer_time, game_link, IsActive, Gold, Essence, Alt_Reward_All FROM Sessions WHERE Session_ID = ?",
@@ -1790,7 +1787,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
             await interaction.followup.send(
                 f"Your players have been rewarded wi-- wait. No! At least give them a silver or a milestone!")
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute(
                     "SELECT GM_Name, Session_Name, Session_Range, Play_Location, hammer_time, Message, Session_Thread, IsActive, Related_Plot FROM Sessions WHERE Session_ID = ?",
@@ -1964,7 +1961,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                 if player and reward  # Ensure both player and reward exist
             ]
 
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute(
                     "SELECT Player_ID, Character_Name FROM Sessions_Archive WHERE Session_ID = ?",
@@ -2020,7 +2017,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
     async def claim(self, interaction: discord.Interaction, session_id: int, character_name: str):
         await interaction.response.defer(thinking=True, ephemeral=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild.id}.sqlite") as conn:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as conn:
                 cursor = await conn.cursor()
                 await cursor.execute(
                     "SELECT GM_Name, Session_Name, Hammer_Time, Session_Range, Gold, Essence, Easy, Medium, Hard, Deadly, Trials, Alt_Reward_All, Alt_Reward_Party, Session_Thread, Message, Rewards_Message, Rewards_Thread, Fame, Prestige FROM Sessions WHERE Session_ID = ? and GM_Name = ? and IsActive = 0 LIMIT 1",
@@ -2120,7 +2117,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
     async def notify(self, interaction: discord.Interaction, session_id: int, message: str = "Session Notice!"):
         """Notify players about an ACTIVE Session."""
         await interaction.response.defer(thinking=True, ephemeral=True)
-        async with aiosqlite.connect(f"Pathparser_{interaction.guild.id}.sqlite") as conn:
+        async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as conn:
             try:
                 cursor = await conn.cursor()
                 await cursor.execute(
@@ -2172,7 +2169,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
         """ALL: THIS COMMAND DISPLAYS SESSION INFORMATION"""
         await interaction.response.defer(thinking=True, ephemeral=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild.id}.sqlite") as conn:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as conn:
                 cursor = await conn.cursor()
                 view_type = 0 if group == 1 else group.value - 1
                 count = 0
@@ -2219,7 +2216,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
         """GM: Delete a group from the database."""
         await interaction.response.defer(thinking=True, ephemeral=True)
         try:
-            async with aiosqlite.connect(f"Pathparser_{interaction.guild.id}.sqlite") as conn:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as conn:
                 cursor = await conn.cursor()
                 await cursor.execute("SELECT Group_ID, Group_Name, Role_ID FROM Sessions_Group WHERE Group_ID = ?", (group_id,))
                 group_info = await cursor.fetchone()
@@ -2301,7 +2298,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
             if ' ' in plot or '-' not in plot:
                 plot = await shared_functions.get_plots_autocomplete(interaction, plot)
         await interaction.response.defer(thinking=True, ephemeral=True)
-        async with aiosqlite.connect(f"Pathparser_{interaction.guild_id}.sqlite") as conn:
+        async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as conn:
             cursor = await conn.cursor()
             await cursor.execute(
                 "SELECT GM_Name, Session_Name, Article_Link, Article_ID, History_ID, Related_Plot, Easy, Medium, Hard, Deadly, Trials FROM Sessions WHERE Session_ID = ? AND GM_Name = ? AND IsActive = 0",
@@ -2357,7 +2354,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
         await interaction.response.defer(thinking=True, ephemeral=True)
         day_value = day.value
         try:
-            async with aiosqlite.connect(f"Pathparser_{guild_id}.sqlite") as conn:
+            async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as conn:
                 cursor = await conn.cursor()
 
                 # Decide which query to execute based on whether 'name' is provided
@@ -2408,7 +2405,7 @@ class SessionDisplayView(shared_functions.DualView):
         signup_limit = max(0, min(20, self.offset + 1 - self.max_participants)) if self.view_type == 0 else 20
         signup_offset = max(0, -20 + self.offset) if self.view_type == 0 else self.offset
         self_results = []
-        async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
             cursor = await db.cursor()
             if self.view_type == 0 or self.view_type == 1:
                 participant_statement = """SELECT SP.Player_Name, SP.Player_ID, PC.True_Character_Name, SP.Level, SP.Tier, SP.Effective_Wealth, PC.Tradition_Name, PC.Tradition_Link, PC.Template_Name, PC.Template_Link
@@ -2445,7 +2442,7 @@ class SessionDisplayView(shared_functions.DualView):
     async def get_max_items(self):
         """Get the total number of titles."""
         if self.max_items is None:
-            async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
                 count = 0
                 if self.view_type == 0 or self.view_type == 1:
                     cursor = await db.execute("SELECT COUNT(*) FROM Sessions_Participants WHERE Session_ID = ?",
@@ -2570,7 +2567,7 @@ class UpdateGameLinkView(shared_functions.SelfAcknowledgementView):
         print("i got here")
 
         await self.announcement_message.edit(content=self.session_content, embed=self.session_embed)
-        async with aiosqlite.connect(f"Pathparser_{interaction.guild.id}.sqlite") as conn:
+        async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as conn:
             cursor = await conn.cursor()
             await cursor.execute("UPDATE Sessions SET Game_Link = ? WHERE Session_ID = ?",
                                  (self.game_link, self.session_id))
@@ -2692,7 +2689,7 @@ class JoinOrLeaveSessionView(discord.ui.View):
         # Fetch the user's characters
         try:
             print(interaction.user.name)
-            async with aiosqlite.connect(f'Pathparser_{self.guild.id}.sqlite') as db:
+            async with aiosqlite.connect(f'pathparser_{self.guild.id}.sqlite') as db:
                 cursor = await db.cursor()
                 # Check if the user has already signed up for the session
                 await cursor.execute(
@@ -2791,7 +2788,7 @@ class JoinOrLeaveSessionView(discord.ui.View):
 
     async def handle_leave(self, interaction: discord.Interaction):
         # Remove the user's character from the session participants in the database
-        async with (aiosqlite.connect(f'Pathparser_{interaction.guild.id}.sqlite')) as db:
+        async with (aiosqlite.connect(f'pathparser_{interaction.guild.id}.sqlite')) as db:
             cursor = await db.cursor()
             await cursor.execute(
                 "Select Character_Name from Sessions_Participants where Session_ID = ? and Player_ID = ?",
@@ -2886,7 +2883,7 @@ class ReminderPreferenceView(discord.ui.View):
 
     async def update_notification_warning(self, interaction: discord.Interaction, warning_duration: int):
         try:
-            async with aiosqlite.connect(f'Pathparser_{interaction.guild.id}.sqlite') as db:
+            async with aiosqlite.connect(f'pathparser_{interaction.guild.id}.sqlite') as db:
                 await db.execute(
                     "UPDATE Sessions_Signups SET Notification_Warning = ? WHERE Session_ID = ? AND Player_ID = ?",
                     (warning_duration, self.session_id, interaction.user.id)
@@ -2981,7 +2978,7 @@ class DisplayTimeGroupView(discord.ui.View):
                 embed=self.embed,
                 view=self
             )
-            with open(f'C:\\Pathparser\\plots\\group_{interaction.user.name}_plot.png', 'rb') as f:
+            with open(f'C:\\pathparser\\plots\\group_{interaction.user.name}_plot.png', 'rb') as f:
                 picture = discord.File(f)
                 await interaction.followup.send(file=picture, ephemeral=True)
         except Exception as e:
@@ -3011,7 +3008,7 @@ class DisplayTimeGroupView(discord.ui.View):
                 embed=self.embed,
                 view=self
             )
-            with open(f'C:\\Pathparser\\plots\\group_{interaction.user.name}_plot.png', 'rb') as f:
+            with open(f'C:\\pathparser\\plots\\group_{interaction.user.name}_plot.png', 'rb') as f:
                 picture = discord.File(f)
                 await interaction.followup.send(file=picture, ephemeral=True)
         except Exception as e:
@@ -3025,7 +3022,7 @@ class DisplayTimeGroupView(discord.ui.View):
             await self.update_results()
             await self.create_embed()
             await self.update_buttons()
-            with open(f'C:\\Pathparser\\plots\\group_{self.interaction.user.name}_plot.png', 'rb') as f:
+            with open(f'C:\\pathparser\\plots\\group_{self.interaction.user.name}_plot.png', 'rb') as f:
                 picture = discord.File(f)
             self.message = await self.interaction.followup.send(
                 embed=self.embed,
@@ -3041,7 +3038,7 @@ class DisplayTimeGroupView(discord.ui.View):
     async def on_timeout(self):
         """Disable buttons when the view times out."""
         try:
-            os.remove(f'C:\\Pathparser\\plots\\timecard_{self.user_id}_plot.png')
+            os.remove(f'C:\\pathparser\\plots\\timecard_{self.user_id}_plot.png')
             for child in self.children:
                 child.disabled = True
             if self.message:
@@ -3089,7 +3086,7 @@ class DisplayTimeGroupView(discord.ui.View):
                 embed=self.embed,
                 view=self
             )
-            with open(f'C:\\Pathparser\\plots\\group_{interaction.user.name}_plot.png', 'rb') as f:
+            with open(f'C:\\pathparser\\plots\\group_{interaction.user.name}_plot.png', 'rb') as f:
                 picture = discord.File(f)
                 await interaction.followup.send(file=picture, ephemeral=True)
         except Exception as e:
@@ -3120,7 +3117,7 @@ class DisplayTimeGroupView(discord.ui.View):
                 embed=self.embed,
                 view=self
             )
-            with open(f'C:\\Pathparser\\plots\\group_{interaction.user.name}_plot.png', 'rb') as f:
+            with open(f'C:\\pathparser\\plots\\group_{interaction.user.name}_plot.png', 'rb') as f:
                 picture = discord.File(f)
                 await interaction.followup.send(file=picture, ephemeral=True)
         except Exception as e:
@@ -3152,7 +3149,7 @@ class DisplayTimeGroupView(discord.ui.View):
                         SELECT Group_ID, Group_Name, Role_ID, Player_Name, Host_Character, Description
                         FROM Sessions_Group Order by Group_ID Limit ? Offset ? 
                     """
-        async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
             cursor = await db.cursor()
             self.range_id = self.range_id if self.range_id else 0
             print(self.range_id, self.range_id)
@@ -3187,7 +3184,7 @@ class DisplayTimeGroupView(discord.ui.View):
     async def get_max_items(self):
         """Get the total number of titles."""
         if self.max_items is None:
-            async with aiosqlite.connect(f"Pathparser_{self.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
                 cursor = await db.execute("SELECT COUNT(*) FROM Sessions_Group")
                 count = await cursor.fetchone()
                 self.max_range_id = count[0]
