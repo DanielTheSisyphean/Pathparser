@@ -1,10 +1,9 @@
-import logging
+﻿import logging
 import shutil
 import typing
 from math import ceil
 from typing import Union
 import discord
-import unbelievaboat
 from discord.app_commands import checks
 from discord.ext import commands
 from discord import app_commands
@@ -12,15 +11,16 @@ import datetime
 import os
 from pywaclient.api import BoromirApiClient as WaClient
 import aiosqlite
-import shared_functions
 from decimal import Decimal
-
-from commands import gamemaster_commands, RP_Commands
-from shared_functions import name_fix, character_select_autocompletion
+from commands import gamemaster_commands
+from core import roleplay
+from core import character, display, utils, autocomplete, config, views, cache, roleplay
+from core.autocomplete import character_select_autocompletion
+from core.utils import name_fix, parse_emoji
+from core.views import TicketView, buttonlist
+from core.threads import silent_close_thread
+from core.modals import CreateRootModal, EditRootModal, AddButtonModal, EditButtonModal, EditModalResponseModal
 import commands.character_commands as character_commands
-
-# *** GLOBAL VARIABLES *** #
-os.chdir("C:\\pathparser")
 
 
 async def update_region_level_range(interaction: discord.Interaction, database_conn: aiosqlite.Connection,
@@ -132,26 +132,6 @@ async def transactions_reverse(guild_id: int, transaction_id: int, author_id: in
         return return_value
 
 
-def safe_add(a, b):
-    """Safely add two values together, treating None as zero and converting to Decimal if necessary."""
-    # Treat None as zero
-    a = a if a is not None else 0
-    b = b if b is not None else 0
-
-    # If either value is a Decimal, convert both to Decimal
-    if isinstance(a, float) or isinstance(b, float):
-        a = float(a)
-        b = float(b)
-
-    return a + b
-
-
-def create_progress_bar(current, total, bar_length=20):
-    """Create a progress bar for a given current and total value."""
-    progress = int(bar_length * (current / total))
-    return f"[{'█' * progress}{'-' * (bar_length - progress)}] {current}/{total}"
-
-
 async def add_item_to_store(guild_id, item_name, price, description, stock, inventory, usable, sellable, image,
                             custom_message):
     """Add an item to the roleplay store."""
@@ -208,7 +188,7 @@ async def edit_item_in_store(guild_id, old_item_name, new_item_name, price, desc
 
             # Update the item in the store
             await cursor.execute(
-                "UPDATE RP_Store_Items SET name = ?, price = ?, description = ?, stock_remaining = ?, inventory = ?, usable = ?, sellable = ?, image_link = ?, Custom_Message = ?, WHERE name = ?",
+                "UPDATE RP_Store_Items SET name = ?, price = ?, description = ?, stock_remaining = ?, inventory = ?, usable = ?, sellable = ?, image_link = ?, Custom_Message = ? WHERE name = ?",
                 (new_item_name, new_price, new_description, new_stock, new_inventory, new_usable, new_sellable,
                  new_image, new_custom_message, old_item_name))
             await conn.commit()
@@ -237,7 +217,7 @@ async def session_log_player(cursor: aiosqlite.Cursor,
                              return_essence: tuple):
     """Log a player's session rewards and update their character information."""
     try:
-        character_changes = shared_functions.CharacterChange(
+        character_changes = character.CharacterChange(
             character_name=character_name,
             author=interaction.user.name,
             source=source)
@@ -303,10 +283,10 @@ async def session_log_player(cursor: aiosqlite.Cursor,
                                  transaction_id))
 
         # Update the character information in the database and log it appropriately.
-        await shared_functions.character_embed(character_name=character_name,
+        await display.character_embed(character_name=character_name,
                                                guild=interaction.guild)
 
-        await shared_functions.log_embed(change=character_changes, guild=interaction.guild,
+        await display.log_embed(change=character_changes, guild=interaction.guild,
                                          thread=thread_id, bot=bot)
 
         return f"<@{player_id}>'s {character_name} has been successfully updated!"
@@ -424,8 +404,7 @@ class AdminCommands(commands.Cog, name='admin'):
             await interaction.followup.send(embed=embed, ephemeral=True)
         except discord.errors.HTTPException:
             logging.exception(f"Error in help command")
-        finally:
-            return
+
 
     @admin_group.command(name='announce', description='Announce a message to a channel')
     async def announce(self, interaction: discord.Interaction, role: discord.Role, message: str):
@@ -447,8 +426,7 @@ class AdminCommands(commands.Cog, name='admin'):
             await interaction.followup.send('announcement sent')
         except discord.errors.HTTPException:
             logging.exception(f"Error in announce command")
-        finally:
-            return
+
 
 
     character_group = discord.app_commands.Group(
@@ -482,7 +460,7 @@ class AdminCommands(commands.Cog, name='admin'):
                     else:
                         # Unpack discovered player information
                         (true_character_name, character_name, essence, thread_id) = player_info
-                        essence_adjustment = character_commands.calculate_essence(
+                        essence_adjustment = character.calculate_essence(
                             character_name=character_name,
                             essence=essence,
                             essence_change=amount,
@@ -490,12 +468,12 @@ class AdminCommands(commands.Cog, name='admin'):
                         )
 
                         (new_essence, essence_change) = essence_adjustment
-                        character_updates = shared_functions.UpdateCharacterData(
+                        character_updates = character.UpdateCharacterData(
                             character_name=character_name,
                             essence=new_essence)
 
                         # Update the character's essence in the database
-                        updated_character = await shared_functions.update_character(
+                        updated_character = await character.update_character(
                             guild_id=guild.id,
                             change=character_updates)
                         if not isinstance(updated_character, tuple):
@@ -513,18 +491,18 @@ class AdminCommands(commands.Cog, name='admin'):
                                 return
 
                         # Log the character's essence change
-                        character_changes = shared_functions.CharacterChange(
+                        character_changes = character.CharacterChange(
                             character_name=character_name,
                             author=interaction.user.name,
                             essence=new_essence,
                             essence_change=essence_change,
                             source=f"admin adjusted essence by {amount} for {character_name}\r\nReason: {reason}",
                             )
-                        character_log = await shared_functions.log_embed(change=character_changes, guild=guild,
+                        character_log = await display.log_embed(change=character_changes, guild=guild,
                                                                          thread=thread_id, bot=self.bot)
 
                         # Update the character's Bio embed
-                        await shared_functions.character_embed(
+                        await display.character_embed(
                             character_name=character_name,
                             guild=guild)
 
@@ -546,7 +524,7 @@ class AdminCommands(commands.Cog, name='admin'):
 
     @gold_group.command(name="adjust",
                         description="commands for adding or removing gold from a character")
-    @app_commands.autocomplete(character_name=shared_functions.character_select_autocompletion)
+    @app_commands.autocomplete(character_name=autocomplete.character_select_autocompletion)
     async def gold_adjust(
             self,
             interaction: discord.Interaction,
@@ -628,17 +606,17 @@ class AdminCommands(commands.Cog, name='admin'):
                 gold_package = (gold_total, new_effective_gold, gold_value_max_total)
 
                 # Update the character's gold information
-                character_updates = shared_functions.UpdateCharacterData(
+                character_updates = character.UpdateCharacterData(
                     character_name=character_name,
                     gold_package=gold_package
                 )
-                await shared_functions.update_character(
+                await character.update_character(
                     guild_id=guild_id,
                     change=character_updates
                 )
 
                 # Log the character's gold change
-                character_changes = shared_functions.CharacterChange(
+                character_changes = character.CharacterChange(
                     character_name=character_name,
                     author=interaction.user.name,
                     gold=gold_total,
@@ -648,13 +626,13 @@ class AdminCommands(commands.Cog, name='admin'):
                     source=f"Admin adjusted gold by {amount} for {character_name} for {reason}"
                 )
 
-                character_log = await shared_functions.log_embed(
+                character_log = await display.log_embed(
                     change=character_changes,
                     guild=guild,
                     thread=thread_id,
                     bot=self.bot
                 )
-                await shared_functions.character_embed(
+                await display.character_embed(
                     character_name=character_name,
                     guild=guild
                 )
@@ -691,18 +669,20 @@ class AdminCommands(commands.Cog, name='admin'):
                  gold_value_total,
                  gold_value_max_total) = transactions_undo
                 # Log the character's gold change
-                character_changes = shared_functions.CharacterChange(
+                print("this is the evaluation", transactions_undo)
+                character_changes = character.CharacterChange(
                     character_name=character_name,
                     author=interaction.user.name,
                     gold=Decimal(gold_total),
+                    gold_value=Decimal(gold_value_total),
                     gold_change=Decimal(amount),
                     source=f"admin undid the transaction of transaction ID: {transaction_id} reducing gold by {amount} for {character_name} for {reason} \r\n New Transaction ID of {new_transaction_id}")
-                character_log = await shared_functions.log_embed(
+                character_log = await display.log_embed(
                     change=character_changes,
                     guild=guild,
                     thread=thread_id,
                     bot=self.bot)
-                await shared_functions.character_embed(
+                await display.character_embed(
                     character_name=character_name,
                     guild=guild)
                 content = f"undid transaction {transaction_id} for {character_name} with a new transaction id of {new_transaction_id}."
@@ -717,18 +697,18 @@ class AdminCommands(commands.Cog, name='admin'):
                         # Log the character's gold change
                         (new_transaction_id, _, character_name, thread_id, amount, gold_total, gold_value_total,
                          gold_value_max_total) = related_transactions_undo
-                        character_changes = shared_functions.CharacterChange(
+                        character_changes = character.CharacterChange(
                             character_name=character_name,
                             author=interaction.user.name,
                             gold=Decimal(gold_total),
                             gold_change=Decimal(amount),
                             source=f"admin undid the transaction of transaction ID: {transaction_id} reducing gold by {amount} for {character_name} for {reason} \r\n New Transaction ID of {new_transaction_id}")
-                        character_log = await shared_functions.log_embed(
+                        character_log = await display.log_embed(
                             change=character_changes,
                             guild=guild,
                             thread=thread_id,
                             bot=self.bot)
-                        await shared_functions.character_embed(
+                        await display.character_embed(
                             character_name=character_name,
                             guild=guild)
                         content += f"\r\n undid related transaction {transaction_id} for {character_name} with a new transaction id of {new_transaction_id}."
@@ -838,9 +818,18 @@ class AdminCommands(commands.Cog, name='admin'):
                                                   color=discord.Color.blue())
 
                             for idx, player in enumerate(session_complex):
-                                (player_id, player_name, character_name, level, tier, effective_gold,
+                                (player_id,
+                                 player_name,
+                                 character_name,
+                                 level,
+                                 tier,
+                                 effective_gold,
                                  received_milestones,
-                                 received_trials, received_gold, received_fame, received_prestige, received_essence,
+                                 received_trials,
+                                 received_gold,
+                                 received_fame,
+                                 received_prestige,
+                                 received_essence,
                                  gold_transaction_id) = player
                                 response_field = f"{player_name}'s {character_name}: \r\n"
 
@@ -896,16 +885,16 @@ class AdminCommands(commands.Cog, name='admin'):
                                             for field in numeric_fields:
                                                 a_value = getattr(add_rewards_dataclass, field)
                                                 r_value = getattr(reversal_dataclass, field)
-                                                new_value = safe_add(a_value, r_value)
+                                                new_value = utils.safe_add(a_value, r_value)
                                                 setattr(add_rewards_dataclass, field, new_value)
 
-                                            await shared_functions.log_embed(
+                                            await display.log_embed(
                                                 change=add_rewards_dataclass,
                                                 guild=guild,
                                                 thread=thread_id,
                                                 bot=self.bot)
 
-                                            await shared_functions.character_embed(
+                                            await display.character_embed(
                                                 character_name=character_name,
                                                 guild=guild)
 
@@ -937,36 +926,10 @@ class AdminCommands(commands.Cog, name='admin'):
         parent=admin_group
     )
 
-    @settings_group.command(name="ubb_inventory", description="Display a unbelievaboat player's inventory")
-    async def ubb_inventory(self, interaction: discord.Interaction, player: discord.Member):
-        """Display a player's inventory to identify their owned items and set the serverside items for pouches, milestones, and other"""
-        guild_id = interaction.guild_id
-        client = unbelievaboat.Client(os.getenv('UBB_TOKEN'))
-        await interaction.response.defer(thinking=True, ephemeral=True)
-        try:
-            shop = await client.get_inventory_items_all(guild_id, player.id)
-            if shop is not None:
-                embed = discord.Embed(title=f"UBB Inventory", description=f'UBB inventory',
-                                      colour=discord.Colour.blurple())
-
-                for idx, item in enumerate(shop.items):
-                    if idx <= 20:
-                        embed.add_field(name=f'**new item**', value=f'{item}', inline=False)
-                    if idx == 21:
-                        embed.add_field(name=f'**Additional Items**',
-                                        value=f'Additional items exist, please narrow down the inventory for more information. Yes I could paginate this. No. I will not. Use a Dummy player with less items',
-                                        inline=False)
-                await interaction.followup.send(embed=embed, ephemeral=True)
-            else:
-                await interaction.followup.send(f"This player does not have any items in their inventory.")
-        except unbelievaboat.errors.HTTPError as e:
-            logging.exception(f"An error occurred whilst trying to get the inventory for {player.name}: {e}")
-            await interaction.followup.send(
-                f"An error occurred whilst trying to get the inventory for {player.name}: {e}", ephemeral=True)
 
     @settings_group.command(name='display',
                             description='Display server settings')
-    @app_commands.autocomplete(setting=shared_functions.settings_autocomplete)
+    @app_commands.autocomplete(setting=autocomplete.settings_autocomplete)
     async def display(self, interaction: discord.Interaction, setting: typing.Optional[str],
                       page_number: int = 1):
         """Display server setting information. This is used to know to where key server settings are pointing to."""
@@ -1026,7 +989,7 @@ class AdminCommands(commands.Cog, name='admin'):
 
     @settings_group.command(name='update',
                             description='update server settings')
-    @app_commands.autocomplete(setting=shared_functions.settings_autocomplete)
+    @app_commands.autocomplete(setting=autocomplete.settings_autocomplete)
     async def update_setting(self, interaction: discord.Interaction, setting: str, revision: str):
         """This allows the admin to adjust a serverside setting"""
         guild_id = interaction.guild_id
@@ -1091,39 +1054,23 @@ class AdminCommands(commands.Cog, name='admin'):
 
                         elif information[1] == 'item':
                             # This is an item type setting, which means we either need to verify it exists in the server store (if true) or UBB
-                            async with shared_functions.config_cache.lock:
-                                configs = shared_functions.config_cache.cache.get(guild_id)
+                            async with config.config_cache.lock:
+                                configs = config.config_cache.cache.get(guild_id)
                                 if configs:
                                     custom_store = configs.get('Use_Custom_Store')
 
-                                if not custom_store:
-                                    client = unbelievaboat.Client(os.getenv('UBB_TOKEN'))
-                                    try:
-                                        item = await client.get_store_item(guild_id, int(revision))
 
-                                        if not item:
-                                            await interaction.followup.send("Error: Could not find the requested item.",
-                                                                            ephemeral=True)
-                                            return
-                                    except unbelievaboat.HTTPError as e:
-                                        await interaction.followup.send(
-                                            f"Error: Could not find the requested item. {e}",
-                                            ephemeral=True)
-                                        logging.error(f"Error: Could not find the requested item. {e}")
-                                        return
-
-                                else:
-                                    await cursor.execute("Select name from rp_store_items where item_id = ?",
-                                                         (revision,))
-                                    item = await cursor.fetchone()
-                                    if not item:
-                                        await interaction.followup.send("Error: Could not find the requested item.",
-                                                                        ephemeral=True)
-                                        return
+                                await cursor.execute("Select name from rp_store_items where item_id = ?",
+                                                     (revision,))
+                                item = await cursor.fetchone()
+                                if not item:
+                                    await interaction.followup.send("Error: Could not find the requested item.",
+                                                                    ephemeral=True)
+                                    return
 
                         await cursor.execute("Update Admin set Search = ? WHERE identifier = ?", (revision, setting))
                         await conn.commit()
-                        await shared_functions.config_cache.load_configurations(guild_id=guild_id)
+                        await config.config_cache.load_configurations(guild_id=guild_id)
                         await interaction.followup.send(f"Updated {setting} to {revision}", ephemeral=True)
 
                     else:
@@ -1165,7 +1112,7 @@ class AdminCommands(commands.Cog, name='admin'):
 
     @settings_group.command(name='fame', description='Administrative commands for the fame store.')
     @app_commands.describe(modify="add, remove, or edit something in the store.")
-    @app_commands.autocomplete(name=shared_functions.fame_autocomplete)
+    @app_commands.autocomplete(name=autocomplete.fame_autocomplete)
     @app_commands.choices(
         modify=[discord.app_commands.Choice(name='Add/Edit', value=1),
                 discord.app_commands.Choice(name='Remove', value=2)])
@@ -1278,8 +1225,8 @@ class AdminCommands(commands.Cog, name='admin'):
 
                     else:
                         # Verify if the server uses the UBB inventory or the custom store
-                        async with shared_functions.config_cache.lock:
-                            configs = shared_functions.config_cache.cache.get(guild_id)
+                        async with config.config_cache.lock:
+                            configs = config.config_cache.cache.get(guild_id)
                             if configs:
                                 custom_store = configs.get('Use_Custom_Store')
                             if not custom_store:
@@ -1324,8 +1271,8 @@ class AdminCommands(commands.Cog, name='admin'):
                     updated_feminine_name = feminine_name if feminine_name else info_feminine_name
 
                     # Verify if the server uses the UBB inventory or the custom store
-                    async with shared_functions.config_cache.lock:
-                        configs = shared_functions.config_cache.cache.get(guild_id)
+                    async with config.config_cache.lock:
+                        configs = config.config_cache.cache.get(guild_id)
                         if configs:
                             custom_store = configs.get('Use_Custom_Store')
 
@@ -1362,7 +1309,7 @@ class AdminCommands(commands.Cog, name='admin'):
 
                             for character in masculine_characters:
                                 (character_name,) = character
-                                await shared_functions.character_embed(
+                                await display.character_embed(
                                     character_name=character_name,
                                     guild=interaction.guild)
 
@@ -1377,7 +1324,7 @@ class AdminCommands(commands.Cog, name='admin'):
 
                             for character in feminine_characters:
                                 (character_name,) = character
-                                await shared_functions.character_embed(
+                                await display.character_embed(
                                     character_name=character_name,
                                     guild=interaction.guild)
 
@@ -1424,7 +1371,7 @@ class AdminCommands(commands.Cog, name='admin'):
 
     @character_group.command(name="milestones",
                              description="commands for adding or removing milestones from a character")
-    @app_commands.autocomplete(character_name=shared_functions.character_select_autocompletion)
+    @app_commands.autocomplete(character_name=autocomplete.character_select_autocompletion)
     @app_commands.describe(job='What kind of job you are adding')
     @app_commands.choices(
         job=[discord.app_commands.Choice(name='Easy', value=1), discord.app_commands.Choice(name='Medium', value=2),
@@ -1500,7 +1447,7 @@ class AdminCommands(commands.Cog, name='admin'):
                         (new_tier, total_trials, trials_required, trial_change) = mythic_adjustment
 
                         # Create the dataclasses for the changes and log it.
-                        character_changes = shared_functions.CharacterChange(
+                        character_changes = character.CharacterChange(
                             character_name=character_name,
                             author=interaction.user.name,
                             level=new_level,
@@ -1508,7 +1455,7 @@ class AdminCommands(commands.Cog, name='admin'):
                             milestone_change=awarded_total_milestones,
                             milestones_remaining=min_milestones,
                             source=f"admin adjusted milestones by {amount} for {character_name}")
-                        character_updates = shared_functions.UpdateCharacterData(
+                        character_updates = character.UpdateCharacterData(
                             character_name=character_name,
                             level_package=(new_level, total_milestones, milestones_to_level),
                         )
@@ -1520,14 +1467,14 @@ class AdminCommands(commands.Cog, name='admin'):
                             character_changes.trial_change = 0
 
                         # Update the character and log the changes
-                        await shared_functions.update_character(guild_id=guild_id, change=character_updates)
+                        await character.update_character(guild_id=guild_id, change=character_updates)
 
-                        character_log = await shared_functions.log_embed(
+                        character_log = await display.log_embed(
                             change=character_changes,
                             guild=guild,
                             thread=thread_id,
                             bot=self.bot)
-                        await shared_functions.character_embed(
+                        await display.character_embed(
                             character_name=character_name,
                             guild=guild)
                         await interaction.followup.send(
@@ -1570,7 +1517,7 @@ class AdminCommands(commands.Cog, name='admin'):
                         await cursor.execute("Update Admin set Search = ? WHERe Identifier = 'Level_Cap'", (new_level,))
                         await conn.commit()
                         # Reset the cache to apply the new level cap.
-                        await shared_functions.config_cache.load_configurations(guild_id=guild_id)
+                        await config.config_cache.load_configurations(guild_id=guild_id)
                         await cursor.execute(
                             "SELECT True_Character_Name, Character_Name, Level, Milestones, Tier, Trials, personal_cap, Thread_ID, region, Player_ID FROM Player_Characters WHERE Milestones >= ?",
                             (minimum_milestones,))
@@ -1614,12 +1561,12 @@ class AdminCommands(commands.Cog, name='admin'):
                                     (new_tier, total_trials, trials_required, trial_change) = mythic_adjustment
 
                                     # Create the dataclasses for the changes and log it.
-                                    character_updates = shared_functions.UpdateCharacterData(
+                                    character_updates = character.UpdateCharacterData(
                                         character_name=character_name,
                                         level_package=(new_level, total_milestones, milestones_to_level),
                                     )
 
-                                    character_changes = shared_functions.CharacterChange(
+                                    character_changes = character.CharacterChange(
                                         character_name=character_name,
                                         author=interaction.user.name,
                                         level=new_level,
@@ -1635,17 +1582,17 @@ class AdminCommands(commands.Cog, name='admin'):
                                         character_changes.trials_remaining = trials_required
                                         character_changes.trial_change = 0
 
-                                    await shared_functions.update_character(
+                                    await character.update_character(
                                         guild_id=guild_id,
                                         change=character_updates
                                     )
 
-                                    await shared_functions.log_embed(
+                                    await display.log_embed(
                                         change=character_changes,
                                         guild=guild,
                                         thread=thread_id, bot=self.bot)
 
-                                    await shared_functions.character_embed(
+                                    await display.character_embed(
                                         character_name=character_name,
                                         guild=guild)
 
@@ -1679,7 +1626,7 @@ class AdminCommands(commands.Cog, name='admin'):
 
                         else:
                             await interaction.followup.send(
-                                f"You have increased your cap to {new_level}! However your server does not have any characters that meet the minimum milestone requirement it!",
+                                f"You have increased your cap to {new_level}! However your server does not have any characters that meet the minimum milestone requirement for it!",
                                 ephemeral=True)
 
                     else:
@@ -1842,11 +1789,11 @@ class AdminCommands(commands.Cog, name='admin'):
                     (new_tier, total_trials, trials_required, trial_change) = mythic_adjustment
 
                     # Create the dataclasses for the changes and log it.
-                    character_updates = shared_functions.UpdateCharacterData(
+                    character_updates = character.UpdateCharacterData(
                         character_name=character_name,
                         level_package=(new_level, total_milestones, milestones_to_level),
                     )
-                    character_changes = shared_functions.CharacterChange(
+                    character_changes = character.CharacterChange(
                         character_name=character_name,
                         author=interaction.user.name,
                         level=new_level,
@@ -1862,17 +1809,17 @@ class AdminCommands(commands.Cog, name='admin'):
                         character_changes.trials_remaining = trials_required
                         character_changes.trial_change = 0
 
-                    await shared_functions.update_character(
+                    await character.update_character(
                         guild_id=guild_id,
                         change=character_updates
                     )
 
-                    await shared_functions.log_embed(
+                    await display.log_embed(
                         change=character_changes,
                         guild=interaction.guild,
                         thread=thread_id, bot=self.bot)
 
-                    await shared_functions.character_embed(
+                    await display.character_embed(
                         character_name=character_name,
                         guild=interaction.guild)
 
@@ -2087,7 +2034,7 @@ class AdminCommands(commands.Cog, name='admin'):
 
                                 processed_count += 1
                                 if processed_count % 10 == 0 or processed_count == total_players:
-                                    progress_bar = create_progress_bar(processed_count, total_players)
+                                    progress_bar = display.create_progress_bar(processed_count, total_players)
                                     await progress_message.edit(content=f"Removing roles...\n{progress_bar}")
 
                 # Update the Milestone_System table with the new range
@@ -2122,7 +2069,7 @@ class AdminCommands(commands.Cog, name='admin'):
 
                     processed_count += 1
                     if processed_count % 10 == 0 or processed_count == total_players:
-                        progress_bar = create_progress_bar(processed_count, total_players)
+                        progress_bar = display.create_progress_bar(processed_count, total_players)
                         await progress_message.edit(content=f"Assigning roles...\n{progress_bar}")
 
                 # Final update
@@ -2202,7 +2149,7 @@ class AdminCommands(commands.Cog, name='admin'):
 
     @character_group.command(name="trials",
                              description="commands for adding or removing mythic trials from a character")
-    @app_commands.autocomplete(character_name=shared_functions.character_select_autocompletion)
+    @app_commands.autocomplete(character_name=autocomplete.character_select_autocompletion)
     async def trial_adjustment(self, interaction: discord.Interaction, character_name: str, amount: int):
         """Adjust the number of Mythic Trials a character possesses"""
         _, unidecode_name = name_fix(character_name)
@@ -2239,16 +2186,16 @@ class AdminCommands(commands.Cog, name='admin'):
                             tier=tier
                         )
                         (new_tier, total_trials, trials_required, trial_change) = mythic_adjustment
-                        character_update = shared_functions.UpdateCharacterData(
+                        character_update = character.UpdateCharacterData(
                             character_name=character_name,
                             mythic_package=(new_tier, total_trials, trials_required)
                         )
-                        await shared_functions.update_character(
+                        await character.update_character(
                             guild_id=guild_id,
                             change=character_update
                         )
 
-                        character_changes = shared_functions.CharacterChange(
+                        character_changes = character.CharacterChange(
                             character_name=character_name,
                             author=interaction.user.name,
                             tier=new_tier,
@@ -2256,12 +2203,12 @@ class AdminCommands(commands.Cog, name='admin'):
                             trials_remaining=trials_required,
                             trial_change=amount,
                             source=f"admin adjusted trials by {amount} for {character_name}")
-                        character_log = await shared_functions.log_embed(
+                        character_log = await display.log_embed(
                             change=character_changes,
                             guild=guild,
                             thread=thread_id,
                             bot=self.bot)
-                        await shared_functions.character_embed(
+                        await display.character_embed(
                             character_name=character_name,
                             guild=guild)
 
@@ -2304,7 +2251,7 @@ class AdminCommands(commands.Cog, name='admin'):
                         minimum_milestones = new_tier_info[0]
                         await cursor.execute("Update Admin set Search = ? WHERe Identifier = 'Tier_Cap'", (new_tier,))
                         await conn.commit()
-                        await shared_functions.config_cache.load_configurations(guild_id=guild_id)
+                        await config.config_cache.load_configurations(guild_id=guild_id)
                         await cursor.execute(
                             "SELECT True_Character_Name, Character_Name, Level, Tier, Trials, Thread_ID FROM Player_Characters WHERE Trials >= ?",
                             (minimum_milestones,))
@@ -2328,12 +2275,12 @@ class AdminCommands(commands.Cog, name='admin'):
                                     tier=tier)
                                 (new_tier_adjusted, total_trials, trials_required, trial_change) = mythic_adjustment
 
-                                character_updates = shared_functions.UpdateCharacterData(
+                                character_updates = character.UpdateCharacterData(
                                     character_name=character_name,
                                     mythic_package=(new_tier_adjusted, total_trials, trials_required)
                                 )
 
-                                character_changes = shared_functions.CharacterChange(
+                                character_changes = character.CharacterChange(
                                     character_name=character_name,
                                     author=interaction.user.name,
                                     tier=new_tier_adjusted,
@@ -2342,18 +2289,18 @@ class AdminCommands(commands.Cog, name='admin'):
                                     trial_change=0,
                                     source=f"admin adjusted the server tier cap to {new_tier}")
 
-                                await shared_functions.update_character(
+                                await character.update_character(
                                     guild_id=guild_id,
                                     change=character_updates
                                 )
 
-                                await shared_functions.log_embed(
+                                await display.log_embed(
                                     change=character_changes,
                                     guild=guild,
                                     thread=thread_id,
                                     bot=self.bot)
 
-                                await shared_functions.character_embed(
+                                await display.character_embed(
                                     character_name=character_name,
                                     guild=guild)
 
@@ -2473,12 +2420,12 @@ class AdminCommands(commands.Cog, name='admin'):
                                 tier=tier)
                             (new_tier, total_trials, trials_required, trial_change) = mythic_adjustment
 
-                            character_updates = shared_functions.UpdateCharacterData(
+                            character_updates = character.UpdateCharacterData(
                                 character_name=character_name,
                                 mythic_package=(new_tier, total_trials, trials_required)
                             )
 
-                            character_changes = shared_functions.CharacterChange(
+                            character_changes = character.CharacterChange(
                                 character_name=character_name,
                                 author=interaction.user.name,
                                 tier=new_tier,
@@ -2487,17 +2434,17 @@ class AdminCommands(commands.Cog, name='admin'):
                                 trial_change=0,
                                 source=f"admin added new Tier of {tier}")
 
-                            await shared_functions.update_character(
+                            await character.update_character(
                                 guild_id=guild_id,
                                 change=character_updates)
 
-                            await shared_functions.log_embed(
+                            await display.log_embed(
                                 change=character_changes,
                                 guild=interaction.guild,
                                 thread=thread_id,
                                 bot=self.bot)
 
-                            await shared_functions.character_embed(
+                            await display.character_embed(
                                 character_name=character_name,
                                 guild=interaction.guild)
 
@@ -2674,20 +2621,20 @@ class AdminCommands(commands.Cog, name='admin'):
 
                 # Decide which query to execute based on whether 'name' is provided
                 if not player_name:
-                    await cursor.execute("SELECT COUNT(Character_Name) FROM Archive_Player_Characters")
-
+                    await cursor.execute("SELECT COUNT(True_Character_Name) FROM Archive_Player_Characters")
+                    named_player = None
                 else:
                     await cursor.execute(
-                        "SELECT COUNT(Character_Name) FROM Archive_Player_Characters WHERE Player_Name = ?",
+                        "SELECT COUNT(True_Character_Name) FROM Archive_Player_Characters WHERE Player_Name = ?",
                         (player_name.name,))
-
+                    named_player = player_name.name
                 character_count = await cursor.fetchone()
                 (character_count,) = character_count
 
                 if character_name:
                     view_type = 2
                     await cursor.execute(
-                        "SELECT character_name from Archive_Player_Characters where Character_Name = ?",
+                        "SELECT True_character_name from Archive_Player_Characters where Character_Name = ?",
                         (character_name,))
                     character = await cursor.fetchone()
 
@@ -2701,12 +2648,12 @@ class AdminCommands(commands.Cog, name='admin'):
                     else:
                         if player_name:
                             await cursor.execute(
-                                "SELECT character_name from Archive_Player_Characters WHERE Player_Name = ? ORDER BY True_Character_Name asc",
+                                "SELECT True_character_name from Archive_Player_Characters WHERE Player_Name = ? ORDER BY True_Character_Name asc",
                                 (player_name.name,))
 
                         else:
                             await cursor.execute(
-                                "SELECT character_name from Archive_Player_Characters ORDER BY True_Character_Name asc")
+                                "SELECT true_character_name from Archive_Player_Characters ORDER BY True_Character_Name asc")
 
                         results = await cursor.fetchall()
                         offset = results.index(character[0]) + 1
@@ -2723,7 +2670,7 @@ class AdminCommands(commands.Cog, name='admin'):
                 view = ArchiveDisplayView(
                     user_id=interaction.user.id,
                     guild_id=guild_id,
-                    player_name=player_name.name,
+                    player_name=named_player,
                     character_name=character_name,
                     limit=items_per_page,
                     offset=offset,
@@ -2793,8 +2740,8 @@ class AdminCommands(commands.Cog, name='admin'):
                     else:
                         retirement_type = 3
 
-                    async with shared_functions.config_cache.lock:
-                        configs = shared_functions.config_cache.cache[interaction.guild.id]
+                    async with config.config_cache.lock:
+                        configs = config.config_cache.cache[interaction.guild.id]
                         accepted_bio_channel = configs.get('Accepted_Bio_Channel')
 
                     if not accepted_bio_channel:
@@ -2826,24 +2773,27 @@ class AdminCommands(commands.Cog, name='admin'):
         parent=admin_group
     )
 
-    @roleplay_group.command(name='add_channel', description='Add a channel to the RP channels')
-    async def add_rp_channel(self, interaction: discord.Interaction, channel: discord.TextChannel):
+    @roleplay_group.command(name='add_channel', description='Add a channel to the RP channels or update the multiplier')
+    async def add_rp_channel(self, interaction: discord.Interaction, channel: discord.TextChannel, multiplier:typing.Optional[float]):
         await interaction.response.defer(thinking=True, ephemeral=True)
         try:
             async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as db:
-                cursor = await db.execute("SELECT 1 FROM rp_Approved_Channels WHERE channel_id = ?", (channel.id,))
+                cursor = await db.execute("SELECT multiplier FROM rp_Approved_Channels WHERE channel_id = ?", (channel.id,))
                 existing_channel = await cursor.fetchone()
 
                 if existing_channel:
-                    await interaction.followup.send(f"{channel.mention} is already an RP channel.", ephemeral=True)
-                    return
-
-                await db.execute("INSERT INTO rp_Approved_Channels (channel_id) VALUES (?)", (channel.id,))
+                    if existing_channel[0] == multiplier:
+                        await interaction.followup.send(f"{channel.mention} is already an RP channel.", ephemeral=True)
+                        return
+                    else:
+                        await db.execute("UPDATE rp_approved_channels set multiplier = coalesce(?, multiplier) where channel_id = ?", (multiplier, channel.id,))
+                        await interaction.followup.send()
+                else:
+                    await db.execute("INSERT INTO rp_Approved_Channels (channel_id, multiplier) VALUES (?, coalesce(?, 1))", (channel.id,))
+                    await cache.add_guild_to_cache(interaction.guild.id)
+                    await interaction.followup.send(f"{channel.mention} has been added to the RP channels.",
+                                                    ephemeral=True)
                 await db.commit()
-
-                await shared_functions.add_guild_to_cache(interaction.guild.id)
-                await interaction.followup.send(f"{channel.mention} has been added to the RP channels.",
-                                                ephemeral=True)
 
         except (aiosqlite.Error, ValueError) as e:
             print(e)
@@ -2866,9 +2816,9 @@ class AdminCommands(commands.Cog, name='admin'):
                 if rp_channel:
                     await db.execute("DELETE FROM rp_Approved_Channels WHERE channel_id = ?", (channel.id,))
                     await db.commit()
-                    async with shared_functions.config_cache.lock:
-                        await shared_functions.config_cache.pop(interaction.guild.id, None)
-                    await shared_functions.add_guild_to_cache(interaction.guild.id)
+                    async with config.config_cache.lock:
+                        await config.config_cache.cache.pop(interaction.guild.id, None)
+                    await cache.add_guild_to_cache(interaction.guild.id)
                     await interaction.followup.send(
                         f"{channel.mention} has been removed from the RP channels.",
                         ephemeral=True)
@@ -2906,7 +2856,7 @@ class AdminCommands(commands.Cog, name='admin'):
                             await db.execute("INSERT INTO rp_Approved_Channels (channel_id) VALUES (?)", (channel.id,))
                             await db.commit()
                             response += f"\n{channel.mention} has been added to the RP channels."
-            await shared_functions.add_guild_to_cache(interaction.guild.id)
+            await cache.add_guild_to_cache(interaction.guild.id)
             await interaction.followup.send(response, ephemeral=True)
         except (aiosqlite.Error, ValueError) as e:
             print(e)
@@ -2946,8 +2896,8 @@ class AdminCommands(commands.Cog, name='admin'):
                             response += f"\n{channel.mention} has been removed from the RP channels."
                         else:
                             response += f"\n{channel.mention} is not an RP channel."
-                async with shared_functions.config_cache.lock:
-                    await shared_functions.add_guild_to_cache(interaction.guild.id)
+                async with config.config_cache.lock:
+                    await cache.add_guild_to_cache(interaction.guild.id)
                 await interaction.followup.send(response,ephemeral=True)
         except (aiosqlite.Error, ValueError) as e:
             logging.exception(
@@ -2964,11 +2914,11 @@ class AdminCommands(commands.Cog, name='admin'):
         await interaction.response.defer(thinking=True, ephemeral=True)
         try:
             async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as db:
-                cursor = await db.execute("SELECT channel_id FROM rp_Approved_Channels")
+                cursor = await db.execute("SELECT channel_id, multiplier FROM rp_Approved_Channels")
                 rp_channels = await cursor.fetchall()
 
                 if rp_channels:
-                    channels = [f"<#{channel_id}>" for (channel_id,) in rp_channels]
+                    channels = [f"<#{channel_id}>, reward Multiplier: {round(multiplier, 2)}" for (channel_id, multiplier) in rp_channels]
                     channels_list = "\n".join(channels)
                     await interaction.followup.send(f"Current RP channels:\n{channels_list}", ephemeral=True)
 
@@ -2984,7 +2934,7 @@ class AdminCommands(commands.Cog, name='admin'):
                 ephemeral=True)
 
     @roleplay_group.command(name='adjust_rp', description='Adjust the RP amount for a player')
-    async def adjust_rp(self, interaction: discord.Interaction, player: typing.Optional[discord.Member], role: typing.Optional[discord.Role], amount: int):
+    async def adjust_rp(self, interaction: discord.Interaction, player: typing.Optional[discord.Member], role: typing.Optional[discord.Role], amount: int, player_id: typing.Optional[str]):
         """Adjust the RP amount for a player."""
         await interaction.response.defer(thinking=True, ephemeral=False)
         try:
@@ -2998,16 +2948,19 @@ class AdminCommands(commands.Cog, name='admin'):
                     rp_balance = await cursor.fetchone()
 
                     if not rp_balance:
+                        current_balance = 0
                         await db.execute(
                             "INSERT INTO RP_Players (user_id, user_name, balance) "
                             "VALUES (?, ?, ?)",
                             (player.id, player.name, amount))
                     else:
+                        current_balance = rp_balance[0]
                         await cursor.execute("UPDATE RP_Players SET balance = balance + ? WHERE user_id = ?",
                                              (amount, player.id))
                     await db.commit()
+                    new_balance = current_balance + amount
                     await interaction.followup.send(
-                        f"RP balance for {player.mention} has been adjusted by {amount} they now have {rp_balance[0] + amount}.",
+                        f"RP balance for {player.mention} has been adjusted by {amount} they now have {new_balance}.",
                         ephemeral=True)
                 if role:
                     for player in role.members:
@@ -3024,12 +2977,27 @@ class AdminCommands(commands.Cog, name='admin'):
                         await db.commit()
                     await interaction.followup.send(
                         f"RP balance for all members of {role.name} has been adjusted by {amount}.", ephemeral=True)
+                if player_id:
+                    await cursor.execute("SELECT balance from RP_Players WHERE user_id = ?", (player_id,))
+                    rp_balance = await cursor.fetchone()
+                    if not rp_balance:
+                        member = interaction.guild.get_member(int(player_id))
+                        if not member:
+                            await interaction.followup.send("this user doesn't exist in system, or a user in this guild.")
+                        else:
+                            await cursor.execute("insert into RP_Players (user_id, user_name, balance) values (?, ?, ?)", (player_id, member.name, amount))
+                            await db.commit()
+                            await interaction.followup.send(f"RP balance for {member} has been adjusted by {amount}.", ephemeral=True)
+                    else:
+                        await cursor.execute("Update rp_players set balance = balance + ? WHERE user_id = ?", (amount, player.id))
+                        await db.commit()
+                        await interaction.followup.send(f"RP balance has been adjusted for <@{player_id}> to be {rp_balance[0] + amount}.", ephemeral=True)
 
         except (aiosqlite.Error, ValueError) as e:
             logging.exception(
-                f"An error occurred whilst listing RP channels: {e}")
+                f"An error occurred whilst adjusting RP for a user: {e}")
             await interaction.followup.send(
-                f"An error occurred whilst fetching data. Please try again later.",
+                f"An error occurred whilst adjusting RP for a suer {e}. Please try again later.",
                 ephemeral=True)
 
     @roleplay_group.command(name='adjust_role', description='Adjust the RP amount for a player')
@@ -3042,12 +3010,12 @@ class AdminCommands(commands.Cog, name='admin'):
                 for player in group.members:
                     try:
                         await cursor.execute(
-                            "UPDATE RP_Balance SET balance = balance + ? WHERE user_id = ?",
+                            "UPDATE RP_Players SET balance = balance + ? WHERE user_id = ?",
                             (amount, player.id))
                         await db.commit()
 
-                    except aiosqlite.Error:
-                        pass
+                    except aiosqlite.Error as e:
+                        logging.exception(f"Error updating role RP for {player.name}: {e}")
 
                 await interaction.followup.send(
                     f"RP balance for all members of {group.name} has been adjusted by {amount}.", ephemeral=True)
@@ -3059,6 +3027,66 @@ class AdminCommands(commands.Cog, name='admin'):
             await interaction.followup.send(
                 f"An error occurred whilst fetching data. Please try again later.",
                 ephemeral=True)
+
+    @roleplay_group.command(name='remove_player', description='Remove a player from the database')
+    async def remove_player(self, interaction: discord.Interaction, player: typing.Optional[discord.User], player_id: typing.Optional[str]):
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        try:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as db:
+                cursor = await db.cursor()
+                if player:
+                    await cursor.execute("select * from RP_Players where user_id = ?", (player_id,))
+                    player_result = await cursor.fetchone()
+                    if not player_result:
+                        await interaction.followup.send(f"{player} has no balance to clear.")
+                    else:
+                        await cursor.execute("delete from RP_Players where user_id = ?", (player_id,))
+                        await db.commit()
+                        await interaction.followup.send(f"{player} has been removed.")
+                if player_id:
+                    await cursor.execute("select * from rp_players where user_id = ?", (player_id,))
+                    player_result = await cursor.fetchone()
+                    if not player_result:
+                        await interaction.followup.send(f"{player} has no balance to clear.")
+                    else:
+                        await cursor.execute("delete from rp_players where user_id = ?", (player_id,))
+                        await db.commit()
+                        await interaction.followup.send(f"{player} has been removed.")
+        except (aiosqlite.Error, ValueError) as e:
+            logging.exception(
+                f"An error occurred whilst listing RP channels: {e}"
+            )
+            await interaction.followup.send(f"An error occurred trying to delete a character {e}.", ephemeral=True)
+
+    @roleplay_group.command(name='clear', description="Clear the database of all players who are not members in the server.")
+    async def clear(self, interaction: discord.Interaction):
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        try:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as db:
+                cursor = await db.cursor()
+                await cursor.execute("select user_id, user_name, balance from rp_players")
+                player_list = await cursor.fetchall()
+                deleted = 0
+                reply = "The following players have been removed:"
+                for player_info in player_list:
+                    player = interaction.guild.get_member(player_info[0])
+                    if not player:
+                        deleted += 1
+                        await cursor.execute("insert into archive_rp_players (user_id, user_name, balance, clear_date), (?, ?, ?, ?)", (player_info[0], player_info[1], player_info[2], datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")))
+                        await cursor.execute("delete from RP_Players where user_id = ?", (player_info[0],))
+                        if deleted <= 20:
+                            reply += f"\r\n {player_info[0]} with name: {player_info[1]} with balance of: {player_info[2]} has been removed."
+                if deleted > 20:
+                    reply += f"\r\n and {deleted - 20} more players have been removed."
+                await db.commit()
+                if deleted > 0:
+                    await interaction.followup.send(reply)
+                else:
+                    await interaction.followup.send("You run a tight ship captain! All players are accounted for.")
+        except (aiosqlite.Error, ValueError) as e:
+            logging.exception(f"An error occurred whilst cleaning player balances from the database. {e}")
+            await interaction.followup.send(f"an error occurred trying to clean the database. {e}", ephemeral=True)
+
 
     @roleplay_group.command(name="update", description="Update the server RP generation settings")
     @app_commands.describe(similarity_threshold="The similarity threshold for RP generation 90 is 90% 10 is 10%")
@@ -3093,9 +3121,9 @@ class AdminCommands(commands.Cog, name='admin'):
                      reward_name, reward_emoji))
                 await db.commit()
 
-                async with RP_Commands.roleplay_info_cache.lock:
-                    RP_Commands.roleplay_info_cache.cache.pop(interaction.guild.id, None)
-                    await RP_Commands.add_guild_to_rp_cache(interaction.guild.id)
+                async with roleplay.roleplay_info_cache.lock:
+                    roleplay.roleplay_info_cache.cache.pop(interaction.guild.id, None)
+                    await roleplay.add_guild_to_rp_cache(interaction.guild.id)
 
                 await interaction.followup.send("RP settings have been updated.", ephemeral=True)
 
@@ -3125,7 +3153,7 @@ class AdminCommands(commands.Cog, name='admin'):
                         f"RP Settings:\n"
                         f"Minimum Post Length: {minimum_length}\n"
                         f"Similarity Threshold: {similarity_threshold}%\n"
-                        "Minimum Reward: {minimum_reward}\n"
+                        f"Minimum Reward: {minimum_reward}\n"
                         f"Maximum Reward: {maximum_reward}\n"
                         f"Reward Multiplier: {reward_multiplier}", ephemeral=True)
 
@@ -3219,7 +3247,7 @@ class AdminCommands(commands.Cog, name='admin'):
     @app_commands.choices(
         usable=[discord.app_commands.Choice(name='usable', value=1),
                 discord.app_commands.Choice(name='unusable', value=0)])
-    @app_commands.autocomplete(name=shared_functions.rp_store_autocomplete)
+    @app_commands.autocomplete(name=autocomplete.rp_store_autocomplete)
     async def edit_rp_store(
             self,
             interaction: discord.Interaction,
@@ -3266,7 +3294,7 @@ class AdminCommands(commands.Cog, name='admin'):
                 f"An error occurred whilst responding. Please try again later.", ephemeral=True)
 
     @rp_store_group.command(name='give', description='give an item to a user')
-    @app_commands.autocomplete(item_name=shared_functions.rp_store_autocomplete)
+    @app_commands.autocomplete(item_name=autocomplete.rp_store_autocomplete)
     async def give_item_to_player(self, interaction: discord.Interaction, item_name: str, quantity: int,
                                   player: discord.Member):
         await interaction.response.defer(thinking=True)
@@ -3298,7 +3326,7 @@ class AdminCommands(commands.Cog, name='admin'):
                         (quantity, item_name))
                     await db.commit()
 
-                await RP_Commands.handle_inventory_or_use(
+                await roleplay.handle_inventory_or_use(
                     db=db,
                     user_id=player.id,
                     amount=quantity,
@@ -3321,7 +3349,7 @@ class AdminCommands(commands.Cog, name='admin'):
                 f"An error occurred whilst responding. Please try again later.", ephemeral=True)
 
     @rp_store_group.command(name='take', description='take an item from a user')
-    @app_commands.autocomplete(item_name=shared_functions.rp_store_autocomplete)
+    @app_commands.autocomplete(item_name=autocomplete.rp_store_autocomplete)
     async def take_item_from_player(self, interaction: discord.Interaction, item_name: str, quantity: int,
                                     player: discord.Member):
         await interaction.response.defer(thinking=True)
@@ -3365,7 +3393,7 @@ class AdminCommands(commands.Cog, name='admin'):
                 f"An error occurred whilst responding. Please try again later.", ephemeral=True)
 
     @rp_store_group.command(name='remove', description='remove an item from the store')
-    @app_commands.autocomplete(item_name=shared_functions.rp_store_autocomplete)
+    @app_commands.autocomplete(item_name=autocomplete.rp_store_autocomplete)
     async def remove_rp_store(self, interaction: discord.Interaction, item_name: str):
         await interaction.response.defer(thinking=True, ephemeral=True)
         try:
@@ -3391,7 +3419,7 @@ class AdminCommands(commands.Cog, name='admin'):
                 f"An error occurred whilst responding. Please try again later.", ephemeral=True)
 
     @rp_store_group.command(name='requirements', description='adjust the requirements of an item in the store')
-    @app_commands.autocomplete(item_name=shared_functions.rp_store_autocomplete)
+    @app_commands.autocomplete(item_name=autocomplete.rp_store_autocomplete)
     @app_commands.choices(requirement=[discord.app_commands.Choice(name='slot 1', value=1),
                                        discord.app_commands.Choice(name='slot 2', value=2),
                                        discord.app_commands.Choice(name='slot 3', value=3)])
@@ -3471,7 +3499,7 @@ class AdminCommands(commands.Cog, name='admin'):
                 f"An error occurred whilst responding. Please try again later.", ephemeral=True)
 
     @rp_store_group.command(name='matching', description='Specify the matching requirements of an item in the store')
-    @app_commands.autocomplete(item_name=shared_functions.rp_store_autocomplete)
+    @app_commands.autocomplete(item_name=autocomplete.rp_store_autocomplete)
     @app_commands.choices(matching=[discord.app_commands.Choice(name='All Match', value=1),
                                     discord.app_commands.Choice(name='Any Match', value=2),
                                     discord.app_commands.Choice(name='Not Match', value=3)])
@@ -3505,7 +3533,7 @@ class AdminCommands(commands.Cog, name='admin'):
                 f"An error occurred whilst responding. Please try again later.", ephemeral=True)
 
     @rp_store_group.command(name='behavior', description='Specify the behavior of an item in the store')
-    @app_commands.autocomplete(item_name=shared_functions.rp_store_autocomplete)
+    @app_commands.autocomplete(item_name=autocomplete.rp_store_autocomplete)
     @app_commands.choices(slot=[discord.app_commands.Choice(name='slot 1', value=1),
                                 discord.app_commands.Choice(name='slot 2', value=2),
                                 discord.app_commands.Choice(name='slot 3', value=3)])
@@ -3571,7 +3599,7 @@ class AdminCommands(commands.Cog, name='admin'):
                 f"An error occurred whilst responding. Please try again later.", ephemeral=True)
 
     @rp_store_group.command(name='cancel_requirement', description='cancel a requirement for a shop item')
-    @app_commands.autocomplete(item_name=shared_functions.rp_store_autocomplete)
+    @app_commands.autocomplete(item_name=autocomplete.rp_store_autocomplete)
     @app_commands.choices(requirement=[discord.app_commands.Choice(name='slot 1', value=1),
                                        discord.app_commands.Choice(name='slot 2', value=2),
                                        discord.app_commands.Choice(name='slot 3', value=3)])
@@ -3616,7 +3644,7 @@ class AdminCommands(commands.Cog, name='admin'):
                 f"An error occurred whilst responding. Please try again later.", ephemeral=True)
 
     @rp_store_group.command(name='cancel_behavior', description='cancel a matching requirement for a shop item')
-    @app_commands.autocomplete(item_name=shared_functions.rp_store_autocomplete)
+    @app_commands.autocomplete(item_name=autocomplete.rp_store_autocomplete)
     @app_commands.choices(requirement=[discord.app_commands.Choice(name='slot 1', value=1),
                                        discord.app_commands.Choice(name='slot 2', value=2),
                                        discord.app_commands.Choice(name='slot 3', value=3)])
@@ -3702,13 +3730,15 @@ class AdminCommands(commands.Cog, name='admin'):
             name: str,
             role: discord.Role,
             channel: discord.TextChannel,
-            kingdom_building: bool = False):
+            kingdom_building: bool = False,
+            coming: bool = True,
+            going: bool = True):
         await interaction.response.defer(thinking=True, ephemeral=True)
         try:
             async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as db:
                 cursor = await db.cursor()
-                await cursor.execute("INSERT INTO Regions (Name, Role_ID, Channel_ID, kingdom_building) VALUES (?, ?, ?, ?)",
-                                     (name, role.id, channel.id, kingdom_building))
+                await cursor.execute("INSERT INTO Regions (Name, Role_ID, Channel_ID, kingdom_building, coming, going) VALUES (?, ?, ?, ?, ?, ?)",
+                                     (name, role.id, channel.id, kingdom_building, coming, going))
                 await db.commit()
 
                 await interaction.followup.send(f"{name} has been added as a region.", ephemeral=True)
@@ -3720,7 +3750,7 @@ class AdminCommands(commands.Cog, name='admin'):
                 f"An error occurred whilst responding. Please try again later.", ephemeral=True)
 
     @region_group.command(name='remove', description='Remove a region from the server')
-    @app_commands.autocomplete(name=shared_functions.region_autocomplete)
+    @app_commands.autocomplete(name=autocomplete.region_autocomplete)
     async def remove_region(
             self,
             interaction: discord.Interaction,
@@ -3742,7 +3772,7 @@ class AdminCommands(commands.Cog, name='admin'):
                 f"An error occurred whilst responding. Please try again later.", ephemeral=True)
 
     @region_group.command(name='edit', description='Edit a region on the server')
-    @app_commands.autocomplete(old_name=shared_functions.region_autocomplete)
+    @app_commands.autocomplete(old_name=autocomplete.region_autocomplete)
     async def edit_region(
             self,
             interaction: discord.Interaction,
@@ -3750,7 +3780,9 @@ class AdminCommands(commands.Cog, name='admin'):
             new_name: typing.Optional[str],
             role: typing.Optional[discord.Role],
             channel: typing.Optional[discord.TextChannel],
-            kingdom_building: typing.Optional[bool]):
+            kingdom_building: typing.Optional[bool],
+            coming: typing.Optional[bool],
+            going: typing.Optional[bool]):
         await interaction.response.defer(thinking=True, ephemeral=True)
         try:
             async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as db:
@@ -3772,8 +3804,8 @@ class AdminCommands(commands.Cog, name='admin'):
                     else:
                         content = f"{old_name} has been edited as a region."
                     new_name = new_name if new_name is not None else old_name
-                    await cursor.execute("UPDATE Regions SET Name = ?, Role_ID = ?, Channel_ID = ?, Kingdom_Building = ? WHERE Name = ?",
-                                         (new_name, role, channel, kingdom_building, old_name))
+                    await cursor.execute("UPDATE Regions SET Name = ?, Role_ID = ?, Channel_ID = ?, Kingdom_Building = ?, coming = coalesce(?, coming), going = coalesce(?, going) WHERE Name = ?",
+                                         (new_name, role, channel, kingdom_building, old_name, coming, going))
                     await db.commit()
                 await interaction.followup.send(content, ephemeral=True)
 
@@ -3784,7 +3816,7 @@ class AdminCommands(commands.Cog, name='admin'):
                 f"An error occurred whilst responding. Please try again later {e}.", ephemeral=True)
 
     @region_group.command(name='level_range', description='Add a level range to a region')
-    @app_commands.autocomplete(region=shared_functions.region_autocomplete)
+    @app_commands.autocomplete(region=autocomplete.region_autocomplete)
     async def add_level_range(
             self, interaction: discord.Interaction,
             region: str,
@@ -3864,16 +3896,13 @@ class AdminCommands(commands.Cog, name='admin'):
         try:
             async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as db:
                 cursor = await db.cursor()
-                await cursor.execute("SELECT Name, Role_ID FROM Regions where name not in ('Illu', 'Kotima', 'Heim', 'Bayt')")
+                await cursor.execute("SELECT Name, Role_ID FROM Regions")
                 roles = await cursor.fetchall()
                 for role in roles:
                     (role_name, role_id) = role
                     print("the region is", role_name)
                     guild = interaction.guild
                     role_snowflake = guild.get_role(role_id)
-                    members_in_role = role_snowflake.members
-                    for member in members_in_role:
-                        await member.remove_roles(role_snowflake)
                     print("THIS ROLE SNOWFLAKE HAS THE FOLLOWINGS MEMBERS", role_snowflake.members)
                     await cursor.execute("Select Role_ID, Min_Level, Max_level from Regions_Level_Range where name = ?", (role_name,))
                     region_role_ids = await cursor.fetchall()
@@ -3906,7 +3935,601 @@ class AdminCommands(commands.Cog, name='admin'):
             await interaction.followup.send(
                 f"An error occurred whilst responding. Please try again later. {e}", ephemeral=True)
 
-class MilestoneDisplayView(shared_functions.ShopView):
+
+    ticket_group = discord.app_commands.Group(
+        name='ticket',
+        description='Commands to manage ticket root messages and buttons.',
+        parent=admin_group
+    )
+
+
+    @ticket_group.command(
+        name='create_root',
+        description='Create a new root ticket message with an initial button'
+    )
+    @app_commands.describe(
+        channel='The channel to send the message in',
+        button_label='Label for the first button',
+        style='Button style',
+        color='Embed color in hex (#FFFFFF)',
+        response_color='Response embed color in hex (#FFFFFF)',
+        emoji='Emoji (unicode or <:name:id>) use \ before :emoji: to see this'
+    )
+    @app_commands.choices(style=[
+        discord.app_commands.Choice(name='Primary (Blurple)', value=1),
+        discord.app_commands.Choice(name='Secondary (Grey)', value=2),
+        discord.app_commands.Choice(name='Success (Green)', value=3),
+        discord.app_commands.Choice(name='Danger (Red)', value=4)
+    ])
+    async def create_root(
+            self,
+            interaction: discord.Interaction,
+            channel: discord.TextChannel,
+            button_label: str,
+            style: discord.app_commands.Choice[int],
+            emoji: typing.Optional[str],
+            color: str = "#FFFFFF",
+            response_color: str = "#FFFFFF"
+    ):
+
+        if len(button_label) > 20:
+            await interaction.response.send_message(
+                "Button label too long! Please choose a shorter one!",
+                ephemeral=True
+            )
+            return
+
+        parsed_emoji = parse_emoji(emoji)
+        if parsed_emoji:
+            if parsed_emoji[0] == 0:
+                await interaction.followup.send(parsed_emoji[1], ephemeral=True)
+                return
+            if parsed_emoji[0] == 1:
+                emoji = parsed_emoji[1]
+
+        modal = CreateRootModal(
+            channel=channel,
+            button_label=button_label,
+            style=style,
+            color=color,
+            response_color=response_color,
+            emoji=emoji
+        )
+
+        await interaction.response.send_modal(modal)
+
+    @ticket_group.command(
+        name='edit_root',
+        description='Edit the content of a root ticket message'
+    )
+    async def edit_root(
+            self,
+            interaction: discord.Interaction,
+            channel: discord.TextChannel,
+            message_id: str
+    ):
+
+        try:
+            async with aiosqlite.connect(
+                    f"pathparser_{interaction.guild_id}.sqlite"
+            ) as db:
+                cursor = await db.cursor()
+
+                await cursor.execute(
+                    "SELECT messageid, title, content, color FROM TICKETS WHERE messageid = ?",
+                    (message_id,)
+                )
+
+                ticket_message = await cursor.fetchone()
+
+                if not ticket_message:
+                    await interaction.response.send_message(
+                        f"No ticket message with id {message_id} found!",
+                        ephemeral=True
+                    )
+                    return
+
+                (_, message_title, message_content, message_color) = ticket_message
+
+            modal = EditRootModal(
+                channel=channel,
+                message_id=int(message_id),
+                current_title=message_title,
+                current_content=message_content,
+                current_color=message_color
+            )
+
+            await interaction.response.send_modal(modal)
+
+        except Exception as e:
+            logging.exception(f"Error launching edit modal: {e}")
+            await interaction.response.send_message(
+                f"Error editing root message: {e}",
+                ephemeral=True
+            )
+
+    @ticket_group.command(name='delete_root', description='Delete a root ticket message')
+    async def delete_root(self, interaction: discord.Interaction, channel: discord.TextChannel, message_id: str):
+        """Delete a root ticket message."""
+        await interaction.response.defer(ephemeral=True)
+        try:
+            message = await channel.fetch_message(message_id) # Fixed typo msg_id -> message_id
+            async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as db:
+                cursor = await db.cursor()
+                await cursor.execute("SELECT messageid FROM TICKETS WHERE messageid = ?", (message_id,))
+                ticket_message = await cursor.fetchone()
+                if not ticket_message:
+                    await interaction.followup.send(f"No ticket message with id {message_id} found!")
+                    return
+                else:
+                    # Fetch archive channel
+
+                    await cursor.execute("delete from tickets where messageid = ?", (message_id,))
+                    await cursor.execute("delete from tickets_buttons where messageid = ?", (message_id,))
+                    await cursor.execute("delete from tickets_notify where messageid = ?", (message_id,))
+                    
+                    # Fetch threads from tickets_thread instead of tickets
+                    await cursor.execute("Select id, threadid, player_name, claimed_by_id, closer_name, tickettype, claimed_by_name, closer_name from tickets_thread where messageid = ?", (message_id,))
+                    threads = await cursor.fetchall()
+                    
+                    for thread_info in threads:
+                        (ticket_id, thread_id, player_name, claimed_by_id, closer_name, ticket_type, claimed_by_name, closer_name) = thread_info
+                        try:
+                            fetched_thread = interaction.guild.get_channel(thread_id)
+                            if not fetched_thread:
+                                fetched_thread = await interaction.guild.fetch_channel(thread_id)
+                        except discord.NotFound:
+                            continue
+                            
+                        if isinstance(fetched_thread, discord.Thread):
+                            await silent_close_thread(
+                                reason="Root ticket message deleted",
+                                guild=interaction.guild,
+                                ticketid=ticket_id
+                            )
+
+                    await cursor.execute("update tickets_thread set active = 0 where id = ?", (ticket_id,))
+                    await db.commit() # Commit changes
+
+                    try:
+                        await message.delete()
+                    except discord.NotFound:
+                        pass
+                        
+            await interaction.followup.send(f"Message {message_id} deleted. All associated threads have been closed", ephemeral=True)
+        except discord.NotFound:
+             await interaction.followup.send("Message not found.", ephemeral=True)
+        except Exception as e:
+            logging.exception(f"Error deleting root message: {e}")
+            await interaction.followup.send(f"Error deleting root message: {e}", ephemeral=True)
+
+    @ticket_group.command(
+        name='add_button',
+        description='Add a button to an existing root ticket message'
+    )
+    @app_commands.describe(
+        channel='The channel the message is located in in',
+        message_id='The id of the ticket message',
+        emoji='Emoji (unicode or <:name:id>) use \ before :emoji: to see this'
+    )
+    @app_commands.choices(style=[
+        discord.app_commands.Choice(name='Primary (Blurple)', value=1),
+        discord.app_commands.Choice(name='Secondary (Grey)', value=2),
+        discord.app_commands.Choice(name='Success (Green)', value=3),
+        discord.app_commands.Choice(name='Danger (Red)', value=4)
+    ])
+    async def add_button(
+            self,
+            interaction: discord.Interaction,
+            channel: discord.TextChannel,
+            message_id: str,
+            style: discord.app_commands.Choice[int],
+            emoji: typing.Optional[str]
+    ):
+
+        try:
+            msg_id = int(message_id)
+        except ValueError:
+            await interaction.response.send_message(
+                "Invalid message ID.",
+                ephemeral=True
+            )
+            return
+
+        parsed_emoji = parse_emoji(emoji)
+        if parsed_emoji:
+            if parsed_emoji[0] == 0:
+                await interaction.followup.send(parsed_emoji[1], ephemeral=True)
+                return
+            if parsed_emoji[0] == 1:
+                emoji = parsed_emoji[1]
+
+        modal = AddButtonModal(
+            channel=channel,
+            message_id=msg_id,
+            style=style,
+            emoji=emoji
+        )
+
+        await interaction.response.send_modal(modal)
+
+    @ticket_group.command(name='remove_button', description='Remove a button from an existing root ticket message')
+    async def remove_button(self, interaction: discord.Interaction, channel: discord.TextChannel, message_id: str, label: str):
+        """Remove a button from a root ticket message."""
+        await interaction.response.defer(ephemeral=True)
+        try:
+            try:
+                msg_id = int(message_id)
+            except ValueError:
+                 await interaction.followup.send("Invalid message ID.", ephemeral=True)
+                 return
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
+                cursor = await db.cursor()
+                await cursor.execute("SELECT messageid FROM Tickets_Buttons WHERE messageid = ? AND buttonname = ?", (msg_id, label))
+                ticket_message = await cursor.fetchone()
+                if not ticket_message:
+                    await interaction.followup.send(f"No ticket message with id {msg_id} found!")
+                    return
+                else:
+                    message_id = ticket_message[0]
+                    await db.execute("DELETE FROM Tickets_Buttons WHERE messageid = ? AND buttonname = ?",(message_id, label))
+                    await db.commit()
+                    message = await channel.fetch_message(msg_id)   
+                    view = TicketView(message_id=msg_id, guild_id=interaction.guild_id)
+                    await view.setup_buttons()
+                    await message.edit(view=view)
+
+                    await interaction.followup.send(f"Button {label} removed from message {message_id}.", ephemeral=True)
+        except discord.NotFound:
+            await interaction.followup.send("Message not found.", ephemeral=True)
+        except Exception as e:
+            logging.exception(f"Error removing button: {e}")
+            await interaction.followup.send(f"Error removing button: {e}", ephemeral=True)
+
+
+    @ticket_group.command(name='button_list', description='List all buttons')
+    async def list_buttons(self, interaction: discord.Interaction, page: int = 1):
+        """List all buttons."""
+        await interaction.response.defer(ephemeral=True)
+        try:
+            view = buttonlist(user_id=interaction.user.id, guild_id=interaction.guild.id, offset=page, limit=10, interaction=interaction)
+            await view.create_embed()
+            await view.send_initial_message()
+        except Exception as e:
+            logging.exception(f"Error listing buttons: {e}")
+            await interaction.followup.send(f"Error listing buttons: {e}", ephemeral=True)
+
+
+    @ticket_group.command(
+        name='edit_button',
+        description='Edit a button'
+    )
+    async def edit_button(
+            self,
+            interaction: discord.Interaction,
+            channel: discord.TextChannel,
+            message_id: str,
+            label: str,
+            emoji: typing.Optional[str]
+    ):
+
+        try:
+            msg_id = int(message_id)
+        except ValueError:
+            await interaction.response.send_message(
+                "Invalid message ID.",
+                ephemeral=True
+            )
+            return
+
+        try:
+            async with aiosqlite.connect(
+                    f"pathparser_{interaction.guild_id}.sqlite"
+            ) as db:
+
+                db.row_factory = aiosqlite.Row
+                cursor = await db.cursor()
+
+                await cursor.execute(
+                    """SELECT *
+                       FROM Tickets_Buttons
+                       WHERE messageid = ? AND buttonname = ?""",
+                    (msg_id, label)
+                )
+
+                row = await cursor.fetchone()
+
+                if not row:
+                    await interaction.response.send_message(
+                        "Button not found.",
+                        ephemeral=True
+                    )
+                    return
+
+                parsed_emoji = parse_emoji(emoji)
+                if parsed_emoji:
+                    if parsed_emoji[0] == 0:
+                        await interaction.followup.send(parsed_emoji[1], ephemeral=True)
+                        return
+                    if parsed_emoji[0] == 1:
+                        emoji = parsed_emoji[1]
+
+                modal = EditButtonModal(
+                    channel=channel,
+                    message_id=msg_id,
+                    original_label=label,
+                    row_data=row,
+                    emoji=emoji
+                )
+
+                await interaction.response.send_modal(modal)
+
+        except Exception as e:
+            logging.exception(f"Error launching edit modal: {e}")
+            await interaction.response.send_message(
+                f"Error: {e}",
+                ephemeral=True
+            )
+
+    @ticket_group.command(
+        name='modalify',
+        description='add, change, or remove a modal field response for a button'
+    )
+    @app_commands.choices(fieldone=[
+        discord.app_commands.Choice(name='Short', value=1),
+        discord.app_commands.Choice(name='Long', value=2),
+        discord.app_commands.Choice(name='Remove', value=3),
+    ])
+    @app_commands.choices(fieldtwo=[
+        discord.app_commands.Choice(name='Short', value=1),
+        discord.app_commands.Choice(name='Long', value=2),
+        discord.app_commands.Choice(name='Remove', value=3),
+    ])
+    @app_commands.choices(fieldthree=[
+        discord.app_commands.Choice(name='Short', value=1),
+        discord.app_commands.Choice(name='Long', value=2),
+        discord.app_commands.Choice(name='Remove', value=3),
+    ])
+    @app_commands.choices(fieldfour=[
+        discord.app_commands.Choice(name='Short', value=1),
+        discord.app_commands.Choice(name='Long', value=2),
+        discord.app_commands.Choice(name='Remove', value=3),
+    ])
+    @app_commands.choices(fieldfive=[
+        discord.app_commands.Choice(name='Short', value=1),
+        discord.app_commands.Choice(name='Long', value=2),
+        discord.app_commands.Choice(name='Remove', value=3),
+    ])
+    async def edit_button(
+            self,
+            interaction: discord.Interaction,
+            channel: discord.TextChannel,
+            message_id: str,
+            label: str,
+            fieldone: typing.Optional[discord.app_commands.Choice[int]],
+            fieldonetitle: typing.Optional[str],
+            fieldtwo: typing.Optional[discord.app_commands.Choice[int]],
+            fieldtwotitle: typing.Optional[str],
+            fieldthree: typing.Optional[discord.app_commands.Choice[int]],
+            fieldthreetitle: typing.Optional[str],
+            fieldfour: typing.Optional[discord.app_commands.Choice[int]],
+            fieldfourtitle: typing.Optional[str],
+            fieldfive: typing.Optional[discord.app_commands.Choice[int]],
+            fieldfivetitle: typing.Optional[str]
+    ):
+
+        try:
+            msg_id = int(message_id)
+        except ValueError:
+            await interaction.response.send_message(
+                "Invalid message ID.",
+                ephemeral=True
+            )
+            return
+
+        try:
+            changed_field = False
+            tonull_field = ""
+            remove_response = "you nulled out the following:"
+
+
+            async with aiosqlite.connect(
+                    f"pathparser_{interaction.guild_id}.sqlite"
+            ) as db:
+                cursor = await db.cursor()
+
+                await cursor.execute(
+                    """SELECT modaltypeone, modaltitleone, modaldefaultone, modaltypetwo, modaltitletwo, modaldefaulttwo, modaltypethree, modaltitlethree, modaldefaultthree, modaltypefour, modaltitlefour, modaldefaultfour, modaltypefive, modaltitlefive, modaldefaultfive
+                       FROM Tickets_Buttons
+                       WHERE messageid = ? AND buttonname = ?""",
+                    (msg_id, label)
+                )
+
+                row = await cursor.fetchone()
+
+                if not row:
+                    await interaction.response.send_message(
+                        "Button not found.",
+                        ephemeral=True
+                    )
+                    return
+                (modaltypeone, modaltitleone, modaldefaultone, modaltypetwo, modaltitletwo, modaldefaulttwo, modaltypethree, modaltitlethree, modaldefaultthree, modaltypefour, modaltitlefour, modaldefaultfour, modaltypefive, modaltitlefive, modaldefaultfive) = row
+                fieldtitleone = fieldonetitle if fieldonetitle else modaltitleone
+                fieldtitletwo = fieldtwotitle if fieldtwotitle else modaltitletwo
+                fieldtitlethree = fieldthreetitle if fieldthreetitle else modaltitlethree
+                fieldtitlefour = fieldfourtitle if fieldfourtitle else modaltitlefour
+                fieldtitlefive = fieldfivetitle if fieldfivetitle else modaltitlefive
+                if fieldone:
+                    if fieldone.value in (1, 2):
+                        if not fieldonetitle:
+                            await interaction.response.send_message("You have tried to add a field for modal one, but haven't given it a title.", ephemeral=True)
+                            return
+                        else:
+                            changed_field = True
+                    else:
+                        tonull_field += " ModalTypeone = Null, ModalTitleone = Null, ModalDefaultone = Null "
+                elif fieldonetitle and modaltypeone:
+                    changed_field = True
+                    remove_response = f"\r\nnulled out modal field one for {label}"
+
+                if fieldtwo:
+                    if fieldtwo.value in (1, 2):
+                        if not fieldtwotitle:
+                            await interaction.response.send_message(
+                                "You have tried to add a field for modal two, but haven't given it a title.",
+                                ephemeral=True)
+                            return
+                        else:
+                            changed_field = True
+                    else:
+                        tonull_field += "ModalTypetwo = Null, ModalTitletwo = Null, ModalDefaulttwo = Null "
+                        remove_response = f"\r\nnulled out modal field two for {label}"
+                elif fieldtwotitle and modaltypetwo:
+                    changed_field = True
+
+                if fieldthree:
+                    if fieldthree.value in (1, 2):
+                        if not fieldthreetitle:
+                            await interaction.response.send_message(
+                                "You have tried to add a field for modal three, but haven't given it a title.",
+                                ephemeral=True)
+                            return
+                        else:
+                            changed_field = True
+                    else:
+                        tonull_field += "ModalTypethree = Null, ModalTitlethree = Null, ModalDefaultthree = Null "
+                        remove_response = f"\r\nnulled out modal field three for {label}"
+                elif fieldthreetitle and modaltypethree:
+                    changed_field = True
+
+
+                if fieldfour:
+                    if fieldfour.value in (1, 2):
+                        if not fieldfourtitle:
+                            await interaction.response.send_message(
+                                "You have tried to add a field for modal four, but haven't given it a title.",
+                                ephemeral=True)
+                            return
+                        else:
+                            changed_field = True
+                    else:
+                        tonull_field += "ModalTypefour = Null, ModalTitlefour = Null, ModalDefaultfour = Null "
+                        remove_response = f"\r\nnulled out modal field four for {label}"
+                elif fieldfourtitle and modaltypefour:
+                    changed_field = True
+
+
+
+                if fieldfive:
+                    if fieldfive.value in (1, 2):
+                        if not fieldfivetitle:
+                            await interaction.response.send_message(
+                                "You have tried to add a field for modal five, but haven't given it a title.",
+                                ephemeral=True)
+                            return
+                        else:
+                            changed_field = True
+                    else:
+                        tonull_field = "ModalTypefive = Null, ModalTitlefive = Null, ModalDefaultfive = Null "
+                        remove_response = f"\r\nnulled out modal field five for {label}"
+                elif fieldfivetitle and modaltypefive:
+                    changed_field = True
+
+
+                modal = EditModalResponseModal(
+                        channel=channel,
+                        message_id=msg_id,
+                        original_label=label,
+                        fieldone=fieldone,
+                        fieldonetitle=fieldtitleone,
+                        fieldonedefault=modaldefaultone,
+                        fieldtwo=fieldtwo,
+                        fieldtwotitle=fieldtitletwo,
+                        fieldtwodefault=modaldefaulttwo,
+                        fieldthree=fieldthree,
+                        fieldthreetitle=fieldtitlethree,
+                        fieldthreedefault=modaldefaultthree,
+                        fieldfour=fieldfour,
+                        fieldfourtitle=fieldtitlefour,
+                        fieldfourdefault=modaldefaultfour,
+                        fieldfive=fieldfive,
+                        fieldfivetitle = fieldtitlefive,
+                        fieldfivedefault = modaldefaultfive
+                    )
+                if changed_field:
+                    await interaction.response.send_modal(modal)
+                elif len(tonull_field) > 0:
+                    tonull_field = "update tickets_buttons set " + tonull_field + " where messageid = ? and buttonname = ?"
+                    await cursor.execute(tonull_field, (msg_id,label))
+                    await db.commit()
+                    await interaction.response.send_message(remove_response)
+
+        except Exception as e:
+            logging.exception(f"Error launching edit modal: {e}")
+            await interaction.response.send_message(
+                f"Error: {e}",
+                ephemeral=True
+            )
+
+    @ticket_group.command(name='notify', description='Notify a role whenever a button/label combo is pinged')
+    async def add_notification_group(self, interaction: discord.Interaction, message_id: str, label: str, group: discord.Role):
+        """Add a notification group to message/label combo"""
+        await interaction.response.defer(ephemeral=True)
+        try:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
+                cursor = await db.cursor()
+                await cursor.execute("SELECT messageid FROM Tickets_Buttons WHERE messageid = ? AND buttonname = ?", (message_id, label))
+                ticket_message = await cursor.fetchone()
+                if not ticket_message:
+                    await interaction.followup.send(f"No ticket message / label with id {message_id} / {label} found!")
+                    return
+                else:
+                    msg_id = ticket_message[0]
+                    await db.execute("SELECT notification_roles from tickets_notify where ticketname = ? and messageid = ? and notification_roles = ?",(label, msg_id, group.id))
+                    result = await cursor.fetchone() 
+                    if result: 
+                        await interaction.followup.send("notification_role already associated with ticket. There is no need to add it a second time.")
+                    else: 
+                        await db.execute("insert into tickets_notify(ticketname, messageid, notification_roles) VALUES (?, ?, ?)", (label, msg_id, group.id))
+                        await db.commit() 
+                        await interaction.followup.send(f"{group.name} will be notified when tickets of {label} associated with {msg_id} are created.")
+        except discord.NotFound:
+            await interaction.followup.send("Message not found.", ephemeral=True)
+        except Exception as e:
+            logging.exception(f"Error editing button: {e}")
+            await interaction.followup.send(f"Error editing button: {e}", ephemeral=True)
+
+    @ticket_group.command(name='nonotify', description='Notify a role whenever a button/label combo is pinged')
+    async def add_notification_group(self, interaction: discord.Interaction, message_id: str, label: str, group: discord.Role):
+        """Add a notification group to message/label combo"""
+        await interaction.response.defer(ephemeral=True)
+        try:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
+                cursor = await db.cursor()
+                await cursor.execute("SELECT messageid FROM Tickets_Buttons WHERE messageid = ? AND buttonname = ?", (message_id, label))
+                ticket_message = await cursor.fetchone()
+                if not ticket_message: 
+                    await interaction.followup.send(f"No ticket message / label with id {message_id} / {label} found!")
+                    return
+                else:
+                    msg_id = ticket_message[0]
+                    await cursor.execute("SELECT notification_roles from tickets_notify where ticketname = ? and messageid = ? and notification_roles = ?",(label, message_id, group.id))
+                    result = await cursor.fetchone()
+                    if result:
+                        await db.execute("delete from tickets_notify where ticketname = ? and messageid = ? and notification_roles = ?", (label, message_id, group.id))
+                        await db.commit() 
+                        await interaction.followup.send(f"{group.name} will no longer be notified when tickets of {label} associated with {message_id} are created.")
+                    else: 
+                        await interaction.followup.send("no notification_role is associated with ticket. There is no need to remove it.")
+        except discord.NotFound:
+            await interaction.followup.send("Message not found.", ephemeral=True)
+        except Exception as e:
+            logging.exception(f"Error editing button: {e}")
+            await interaction.followup.send(f"Error editing button: {e}", ephemeral=True)
+
+
+
+class MilestoneDisplayView(views.ShopView):
     def __init__(self, user_id: int, guild_id: int, offset: int, limit: int, interaction: discord.Interaction):
         super().__init__(user_id, guild_id, offset, limit, content="", interaction=interaction)
         self.max_items = None  # Cache total number of items
@@ -3949,7 +4572,7 @@ class MilestoneDisplayView(shared_functions.ShopView):
         return self.max_items
 
 
-class MythicDisplayView(shared_functions.ShopView):
+class MythicDisplayView(views.ShopView):
     def __init__(self, user_id: int, guild_id: int, offset: int, limit: int, interaction: discord.Interaction):
         super().__init__(user_id=user_id, guild_id=guild_id, offset=offset, limit=limit, content="",
                          interaction=interaction)
@@ -3988,7 +4611,7 @@ class MythicDisplayView(shared_functions.ShopView):
         return self.max_items
 
 
-class RPStoreView(shared_functions.ShopView):
+class RPStoreView(views.ShopView):
     def __init__(self, user_id: int, guild_id: int, offset: int, limit: int, interaction: discord.Interaction):
         super().__init__(user_id=user_id, guild_id=guild_id, offset=offset, limit=limit, content="",
                          interaction=interaction)
@@ -4057,7 +4680,7 @@ class RPStoreView(shared_functions.ShopView):
 
 
 # *** DUAL VIEWS ***
-class ArchiveDisplayView(shared_functions.DualView):
+class ArchiveDisplayView(views.DualView):
     def __init__(self, user_id: int, guild_id: int, offset: int, limit: int, player_name: str, character_name: str,
                  view_type: int, interaction: discord.Interaction):
         super().__init__(user_id=user_id, guild_id=guild_id, offset=offset, limit=limit, view_type=view_type,
@@ -4185,7 +4808,7 @@ class ArchiveDisplayView(shared_functions.DualView):
             self.limit = 1  # Change the limit to 1 for the detailed view
 
 
-class SettingDisplayView(shared_functions.DualView):
+class SettingDisplayView(views.DualView):
     def __init__(self, user_id: int, guild_id: int, offset: int, limit: int, view_type: int,
                  interaction: discord.Interaction):
         super().__init__(user_id=user_id, guild_id=guild_id, offset=offset, limit=limit, view_type=view_type,
@@ -4265,7 +4888,7 @@ class SettingDisplayView(shared_functions.DualView):
         # *** ACKNOWLEDGEMENT VIEWS ***
 
 
-class ResetDatabaseView(shared_functions.SelfAcknowledgementView):
+class ResetDatabaseView(views.SelfAcknowledgementView):
     def __init__(self, content: str, interaction: discord.Interaction):
         super().__init__(content=content, interaction=interaction)
         self.embed = None
@@ -4306,7 +4929,7 @@ class ResetDatabaseView(shared_functions.SelfAcknowledgementView):
         )
 
 
-class ArchiveCharactersView(shared_functions.SelfAcknowledgementView):
+class ArchiveCharactersView(views.SelfAcknowledgementView):
     def __init__(self, retirement_type, player_name: typing.Optional[str], character_name: typing.Optional[str],
                  guild: discord.Guild, accepted_bio_channel: int, content: str, interaction: discord.Interaction):
         super().__init__(content=content, interaction=interaction)

@@ -13,11 +13,28 @@ from discord import app_commands, Embed, TextChannel
 from discord.ext import commands
 from matplotlib import pyplot as plt
 
-import commands.character_commands as character_commands
 import commands.player_commands as player_commands
-import shared_functions
+from core.config import config_cache
+from core.utils import name_fix, validate_vtt, extract_document_id
+from core.time_utils import complex_validate_hammertime, validate_hammertime, parse_hammer_time_to_iso
+from core.character import (
+    CharacterChange, UpdateCharacterData, update_character,
+    level_calculation, mythic_calculation, gold_calculation,
+    calculate_essence, calculate_fame, CalculationAidFunctionError
+)
+from core.display import log_embed, character_embed
+from core.autocomplete import (
+    character_select_autocompletion, own_character_select_autocompletion,
+    group_id_autocompletion, get_plots_autocomplete, player_session_autocomplete, kingdom_autocomplete,
+    settlement_autocomplete
+)
+from core.worldanvil import (
+    put_wa_report, put_wa_article,
+    validate_worldanvil_link, patch_wa_report
+)
+from core.views import DualView, SelfAcknowledgementView, RumorShopView
+from core.cache import add_guild_to_cache
 from scheduler_utils import scheduled_jobs, remind_users, scheduler, schedule_session_reminders
-from shared_functions import name_fix
 
 
 async def create_group_timecard_plot(dataset, day, user_id):
@@ -66,7 +83,7 @@ async def create_group_timecard_plot(dataset, day, user_id):
         plt.grid(True, linestyle='--', alpha=0.7)
 
         # Save the plot
-        plt.savefig(f'C:\\pathparser\\plots\\group_{user_id}_plot.png')  # Ensure the path is correct for your system
+        plt.savefig(f'\\plots\\group_{user_id}_plot.png')  # Ensure the path is correct for your system
         plt.close()
 
     except Exception as e:
@@ -81,7 +98,7 @@ async def session_reward_reversal(
         session_gold: Decimal,
         session_info: Union[tuple, aiosqlite.Row],
         source: str) -> (
-        Union[tuple[shared_functions.CharacterChange, int], str]):
+        Union[tuple[CharacterChange, int], str]):
 
     if not session_info:
         return f'invalid session ID of {session_id}'
@@ -112,7 +129,7 @@ async def session_reward_reversal(
                      essence, fame, prestige, accepted_date, thread_id, region) = player_info
 
                     try:
-                        return_level = await character_commands.level_calculation(
+                        return_level = await level_calculation(
                             level=info_level,
                             guild=interaction.guild,
                             guild_id=interaction.guild.id,
@@ -127,13 +144,13 @@ async def session_reward_reversal(
                             character_name=character_name,
                             region=region)
 
-                    except character_commands.CalculationAidFunctionError as e:
+                    except CalculationAidFunctionError as e:
                         return_level = f"An error occurred whilst adjusting levels for {character_name} \r\n"
                         logging.exception(f"Error in level calculation: {e}")
                     level_value = info_level if isinstance(return_level, str) else return_level[0]
 
                     try:
-                        return_mythic = await character_commands.mythic_calculation(
+                        return_mythic = await mythic_calculation(
                             character_name=character_name,
                             level=level_value,
                             trials=trials,
@@ -143,12 +160,12 @@ async def session_reward_reversal(
                         return_mythic = return_mythic if tier != return_mythic[
                             0] or info_received_trials != 0 else 0
 
-                    except character_commands.CalculationAidFunctionError as e:
+                    except CalculationAidFunctionError as e:
                         return_mythic = f"An error occurred whilst adjusting trials for {character_name} \r\n"
                         logging.exception(f"Error in Mythic calculation: {e}")
 
                     try:
-                        return_gold = await character_commands.gold_calculation(
+                        return_gold = await gold_calculation(
                             guild_id=interaction.guild.id,
                             character_name=character_name,
                             level=level_value,
@@ -165,18 +182,14 @@ async def session_reward_reversal(
                             source=source
                         )
 
-                    except character_commands.CalculationAidFunctionError as e:
+                    except CalculationAidFunctionError as e:
                         return_gold = f"An error occurred whilst adjusting gold for {character_name} \r\n"
                         logging.exception(f"Error in gold calculation: {e}")
 
                     try:
-                        return_essence = character_commands.calculate_essence(
-                            character_name=character_name,
-                            essence=essence,
-                            essence_change=-info_received_essence,
-                            accepted_date=accepted_date)
+                        return_essence = (essence - info_received_essence, -info_received_essence)
 
-                    except character_commands.CalculationAidFunctionError as e:
+                    except CalculationAidFunctionError as e:
                         return_essence = f"An error occurred whilst adjusting essence for {character_name} \r\n"
                         logging.exception(f"Error in essence calculation: {e}")
 
@@ -191,9 +204,9 @@ async def session_reward_reversal(
 
                     return_fame = (fame - info_received_fame, -info_received_fame, prestige - info_received_prestige,
                                    -info_received_prestige)
-                    character_updates = shared_functions.UpdateCharacterData(character_name=character_name)
+                    character_updates = UpdateCharacterData(character_name=character_name)
 
-                    character_changes = shared_functions.CharacterChange(
+                    character_changes = CharacterChange(
                         character_name=character_name,
                         author=interaction.user.name,
                         source=source)
@@ -243,7 +256,7 @@ async def session_reward_reversal(
                         character_changes.prestige = prestige
                         character_changes.prestige_change = prestige_change
 
-                    await shared_functions.update_character(
+                    await update_character(
                         guild_id=interaction.guild.id,
                         change=character_updates)
                     return character_changes, thread_id
@@ -279,7 +292,7 @@ async def session_reward_calculation(
         session_base_info: RewardSessionBaseInfo,
         character_name: str, author_name: str, pre_session_level: int,
         pre_session_tier: int, pre_session_gold, source: str) -> (
-        Union[tuple[shared_functions.CharacterChange, int], str]):
+        Union[tuple[CharacterChange, int], str]):
     try:
         async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as conn:
             cursor = await conn.cursor()
@@ -298,7 +311,7 @@ async def session_reward_calculation(
                  essence, thread_id, accepted_date, fame, prestige, personal_cap, thread_id, region) = player_info
 
                 try:
-                    return_level = await character_commands.level_calculation(
+                    return_level = await level_calculation(
                         level=pre_session_level,
                         guild=interaction.guild,
                         guild_id=interaction.guild.id,
@@ -313,13 +326,13 @@ async def session_reward_calculation(
                         character_name=character_name,
                         region=region)
 
-                except character_commands.CalculationAidFunctionError as e:
+                except CalculationAidFunctionError as e:
                     return_level = f"An error occurred whilst adjusting levels for {character_name} \r\n"
                     logging.exception(f"Error in level calculation: {e}")
                 level_value = pre_session_level if isinstance(return_level, str) else return_level[0]
 
                 try:
-                    return_mythic = await character_commands.mythic_calculation(
+                    return_mythic = await mythic_calculation(
                         guild_id=interaction.guild.id,
                         character_name=character_name,
                         level=level_value,
@@ -327,12 +340,12 @@ async def session_reward_calculation(
                         trial_change=session_base_info.rewarded_trials,
                         tier=pre_session_tier)
 
-                except character_commands.CalculationAidFunctionError as e:
+                except CalculationAidFunctionError as e:
                     return_mythic = f"An error occurred whilst adjusting trials for {character_name} \r\n"
                     logging.exception(f"Error in mythic calculation: {e}")
 
                 try:
-                    return_gold = await character_commands.gold_calculation(
+                    return_gold = await gold_calculation(
                         guild_id=interaction.guild_id,
                         character_name=character_name,
                         level=level_value,
@@ -342,28 +355,28 @@ async def session_reward_calculation(
                         gold_value_max=Decimal(gold_value_max),
                         gold_change=Decimal(session_base_info.rewarded_gold),
                         gold_value_change=None,
-                        gold_value_max_change=None,
+                        gold_value_max_change=Decimal(session_base_info.rewarded_gold),
                         author_name=author_name,
                         author_id=interaction.user.id,
                         reason='Session Reward',
                         source=source)
 
-                except character_commands.CalculationAidFunctionError as e:
+                except CalculationAidFunctionError as e:
                     return_gold = f"An error occurred whilst adjusting gold for {character_name} \r\n"
                     logging.exception(f"Error in gold calculation: {e}")
 
                 try:
-                    return_essence = character_commands.calculate_essence(
+                    return_essence = calculate_essence(
                         character_name=character_name,
                         essence=essence,
                         essence_change=session_base_info.rewarded_essence,
                         accepted_date=accepted_date)
 
-                except character_commands.CalculationAidFunctionError as e:
+                except CalculationAidFunctionError as e:
                     return_essence = f"An error occurred whilst adjusting essence for {character_name} \r\n"
                     logging.exception(f"Error in essence calculation: {e}")
 
-                return_fame = character_commands.calculate_fame(
+                return_fame = calculate_fame(
                     character_name=character_name,
                     fame=fame,
                     fame_change=session_base_info.rewarded_fame,
@@ -371,8 +384,8 @@ async def session_reward_calculation(
                     prestige_change=session_base_info.rewarded_prestige,
                 )
 
-                character_updates = shared_functions.UpdateCharacterData(character_name=character_name)
-                character_changes = shared_functions.CharacterChange(
+                character_updates = UpdateCharacterData(character_name=character_name)
+                character_changes = CharacterChange(
                     character_name=character_name,
                     author=interaction.user.name,
                     source=source)
@@ -443,7 +456,7 @@ async def session_reward_calculation(
                 else:
                     fame_change = None
                     prestige_change = None
-                await shared_functions.update_character(
+                await update_character(
                     guild_id=interaction.guild.id,
                     change=character_updates)
 
@@ -464,7 +477,7 @@ async def session_reward_calculation(
 
 def clear_session_reminders(session_id: int, start_time: str, jobs_to_schedule: scheduled_jobs):
     now = datetime.datetime.now(datetime.timezone.utc)
-    session_start_time = shared_functions.parse_hammer_time_to_iso(start_time)
+    session_start_time = parse_hammer_time_to_iso(start_time)
     time_difference = session_start_time - now
     remaining_minutes = time_difference.total_seconds() / 60
     reminder_time_periods = [0, 30, 60]
@@ -794,15 +807,15 @@ async def create_session_embed(embed_info: SessionEmbedInfo) -> Union[tuple[Embe
         embed.add_field(name="Description:", value=embed_info.description, inline=False)
         embed.set_footer(text=f'Session ID: {embed_info.session_id}.')
         print("getting configuration", type(embed_info.guild.id), embed_info.guild.id)
-        async with shared_functions.config_cache.lock:
-            print(shared_functions.config_cache.cache)
-            configs = shared_functions.config_cache.cache.get(embed_info.guild.id)
+        async with config_cache.lock:
+            print(config_cache.cache)
+            configs = config_cache.cache.get(embed_info.guild.id)
             print(configs)
             if configs:
                 session_channel_info = configs.get('Sessions_Channel')
             else:
-                await shared_functions.add_guild_to_cache(embed_info.guild.id)
-                configs = shared_functions.config_cache.cache.get(embed_info.guild.id)
+                await add_guild_to_cache(embed_info.guild.id)
+                configs = config_cache.cache.get(embed_info.guild.id)
                 print(configs)
                 if configs:
                     session_channel_info = configs.get('Sessions_Channel')
@@ -921,7 +934,11 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
         description='Commands related to handling player groups.',
         parent=gamemaster_group
     )
-
+    rumor_group = discord.app_commands.Group(
+        name='rumor',
+        description='Commands related to handling rumors',
+        parent=gamemaster_group
+    )
     @gamemaster_group.command(name='help', description='Help commands for the associated tree')
     async def help(self, interaction: discord.Interaction):
         """Help commands for the associated tree"""
@@ -1002,18 +1019,18 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                         if acceptance == 1:
                             update_reason = f"Item {item_name} has been accepted by {author}!"
                             update_reason += f"\r\n Reason: {reason}" if reason is not None else ""
-                            calculated_fame = character_commands.calculate_fame(character_name=item_character_name,
+                            calculated_fame = calculate_fame(character_name=item_character_name,
                                                                                 fame=fame, prestige=prestige,
                                                                                 fame_change=0,
                                                                                 prestige_change=-abs(
                                                                                     item_prestige_cost))
                             (fame_total, fame_change, prestige_total, final_prestige_change) = calculated_fame
-                            character_updates = shared_functions.UpdateCharacterData(character_name=item_id[0],
+                            character_updates = UpdateCharacterData(character_name=item_id[0],
                                                                                      fame_package=(
                                                                                          fame_total, prestige_total))
-                            await shared_functions.update_character(guild_id=guild_id, change=character_updates)
+                            await update_character(guild_id=guild_id, change=character_updates)
                             reason = "item "
-                            character_changes = shared_functions.CharacterChange(
+                            character_changes = CharacterChange(
                                 character_name=item_id[0],
                                 author=interaction.user.name,
                                 fame=fame_total,
@@ -1021,19 +1038,19 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                                 fame_change=fame_change,
                                 prestige_change=final_prestige_change,
                                 source=reason)
-                            log_update = await shared_functions.log_embed(
+                            log_update = await log_embed(
                                 guild=guild, thread=thread_id,
                                 change=character_changes,
                                 bot=self.bot)
-                            await shared_functions.character_embed(character_name=item_character_name, guild=guild)
+                            await character_embed(character_name=item_character_name, guild=guild)
                         else:
                             update_reason = f"Item {item_name} has been rejected by {author}!"
                             update_reason += f"\r\n Reason: {reason}" if reason is not None else ""
-                            character_changes = shared_functions.CharacterChange(
+                            character_changes = CharacterChange(
                                 character_name=item_id[0],
                                 author=interaction.user.name,
                                 source=reason)
-                            log_update = await shared_functions.log_embed(
+                            log_update = await log_embed(
                                 guild=guild,
                                 thread=thread_id,
                                 change=character_changes,
@@ -1052,7 +1069,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                 f"An error occurred whilst managing a proposition. Please try again later.")
 
     @fame_group.command(name='manage', description='Manage a character\'s fame and prestige!')
-    @app_commands.autocomplete(character=shared_functions.character_select_autocompletion)
+    @app_commands.autocomplete(character=character_select_autocompletion)
     async def manage(self, interaction: discord.Interaction, character: str, reason: typing.Optional[str],
                      fame: int = 0, prestige: int = 0,
                      ):
@@ -1068,23 +1085,23 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                 player_info = await cursor.fetchone()
                 if player_info is not None:
                     (thread_id, current_fame, current_prestige) = player_info
-                    calculated_fame = character_commands.calculate_fame(character_name=character, fame=current_fame,
+                    calculated_fame = calculate_fame(character_name=character, fame=current_fame,
                                                                         prestige=current_prestige, fame_change=fame,
                                                                         prestige_change=prestige)
                     (fame_total, fame_change, prestige_total, final_prestige_change) = calculated_fame
-                    character_updates = shared_functions.UpdateCharacterData(character_name=character,
+                    character_updates = UpdateCharacterData(character_name=character,
                                                                              fame_package=(fame_total, prestige_total))
-                    await shared_functions.update_character(guild_id=guild_id, change=character_updates)
+                    await update_character(guild_id=guild_id, change=character_updates)
                     reason = f"fame and prestige change by {interaction.user.name}.\r\n" + reason if reason is not None else f"fame and prestige change by {interaction.user.name}."
 
-                    character_changes = shared_functions.CharacterChange(character_name=character,
+                    character_changes = CharacterChange(character_name=character,
                                                                          author=interaction.user.name,
                                                                          fame=fame_total,
                                                                          prestige=prestige_total,
                                                                          fame_change=fame_change,
                                                                          prestige_change=final_prestige_change,
                                                                          source=reason)
-                    log_update = await shared_functions.log_embed(
+                    log_update = await log_embed(
                         guild=guild,
                         thread=thread_id,
                         change=character_changes,
@@ -1106,6 +1123,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
         discord.app_commands.Choice(name='include next level bracket!', value=2),
         discord.app_commands.Choice(name='include lower level bracket!', value=3),
         discord.app_commands.Choice(name='ignore role requirements!', value=4)])
+    @app_commands.autocomplete(plot=get_plots_autocomplete)
     async def create(self, interaction: discord.Interaction,
                      session_name: str,
                      session_range: discord.Role,
@@ -1121,9 +1139,33 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                      overflow: discord.app_commands.Choice[int] = 1):
         """Create a new session."""
         await interaction.response.defer(thinking=True, ephemeral=True)
+        if game_link is not None:
+            if not validate_vtt(game_link)[0] and not validate_worldanvil_link(game_link):
+                await interaction.followup.send(
+                    "Invalid Game Link. Please use a valid link (e.g. Foundry VTT, Roll20, Fantasy Grounds) or a valid WorldAnvil link.",
+                    ephemeral=True)
+                return
+        complex_hammer_time_valid = await complex_validate_hammertime(
+            guild_id=interaction.guild_id,
+            author_name=interaction.user.name,
+            hammertime=hammer_time)
+        if complex_hammer_time_valid[0] is False:
+            hammer_time_data = validate_hammertime(hammer_time)
+        else:
+            hammer_time_data = complex_hammer_time_valid[1]
+        if not hammer_time_data[0]:
+            await interaction.followup.send(f"Please provide a valid time: {hammer_time_data[1]}.")
+            return
+        else:
+            (date, time, arrival, hammer_time_stamp) = hammer_time_data[2]
+            if hammer_time_data[1]:
+                hammer_time_field = f"{date} at {time} which is {arrival}"
+            else:
+                hammer_time_field = f"{hammer_time}"
+
         try:
             session_name, _ = name_fix(session_name)
-            overflow_value = overflow if overflow == 1 else overflow.value
+            overflow_value = overflow if isinstance(overflow, int) else overflow.value
             level_range_text = f"{session_range.mention}"
             if overflow_value == 2 or overflow_value == 3:
                 evaluated_session_range = await validate_milestone_system_overflow(
@@ -1141,32 +1183,6 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                         level_range_text += f" and {evaluated_region_range[0].mention}"
             elif overflow_value == 4:
                 level_range_text += "\r\n Any level can join."
-            if game_link:
-                game_link_valid = shared_functions.validate_vtt(game_link)
-                if not game_link_valid[0]:
-                    await interaction.followup.send(
-                        f"Please provide a valid VTT link. You submitted {game_link} \r\n {game_link_valid[1]}")
-                    return
-            complex_hammer_time_valid = await shared_functions.complex_validate_hammertime(
-                guild_id=interaction.guild_id,
-                author_name=interaction.user.name,
-                hammertime=hammer_time)
-            print(complex_hammer_time_valid)
-            if complex_hammer_time_valid[0] is False:
-                print("validating potential regular validation")
-                hammer_time_data = shared_functions.validate_hammertime(hammer_time)
-            else:
-                print("I am here")
-                hammer_time_data = complex_hammer_time_valid[1]
-            if not hammer_time_data[0]:
-                await interaction.followup.send(f"Please provide a valid time: {hammer_time_data[1]}.")
-                return
-            else:
-                (date, time, arrival, hammer_time_stamp) = hammer_time_data[2]
-                if hammer_time_data[1]:
-                    hammer_time_field = f"{date} at {time} which is {arrival}"
-                else:
-                    hammer_time_field = f"{hammer_time}"
             # plot_valid = shared_functions.validate_worldanvil_link(guild_id=interaction.guild_id, article_id=plot)
             # if not plot_valid:
                 # await interaction.followup.send(f"Please provide a valid plot link. You submitted {plot}")
@@ -1214,7 +1230,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                     message_content += f", {group_range_text}" if group_range_text else ""
                     message_content += f"\r\n{interaction.user.mention} is running a session"
                     message_content += f" in <@&{region.id}>!" if region else "!"
-                    message_content += F"\r\n THIS IS AN LM SESSION, IF YOU HAVE NOT PREPARED TO DIE, PUSSY OUT NOW... YOU SHOULD BE SCARED. YOU SHOULD BE SCARED OF DEATH. IF YOU ARE GOING TO GET UPSETTI OVER THIS SPHAGHETTI THIS IS NOT THE SESSION FOR YOU." if interaction.user.id == 237394424815026176 else ""
+                    message_content += F"\r\n THIS IS AN LM SESSION, IF YOU HAVE NOT PREPARED TO DIE, PUSSY OUT NOW... YOU SHOULD BE SCARED. YOU SHOULD BE SCARED OF DEATH. IF YOU ARE GOING TO GET UPSETTI OVER THIS SPAGHETTI THIS IS NOT THE SESSION FOR YOU." if interaction.user.id == 237394424815026176 else ""
                     embed_information = SessionEmbedInfo(
                         guild=interaction.guild,
                         gm_name=interaction.user.name,
@@ -1240,7 +1256,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                             (embed, session_channel) = session_embed
                             if isinstance(time, int) or isinstance(time, str):
                                 now = datetime.datetime.now(datetime.timezone.utc)
-                                session_start_time = shared_functions.parse_hammer_time_to_iso(hammer_time_stamp)
+                                session_start_time = parse_hammer_time_to_iso(hammer_time_stamp)
                                 time_difference = session_start_time - now
                                 timeout_time = int(time_difference.total_seconds())
                             else:
@@ -1307,6 +1323,9 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
         discord.app_commands.Choice(name='include next level bracket!', value=2),
         discord.app_commands.Choice(name='include lower level bracket!', value=3),
         discord.app_commands.Choice(name='ignore role requirements!', value=4)])
+    @app_commands.autocomplete(session_id=player_session_autocomplete)
+    @app_commands.autocomplete(group_id=group_id_autocompletion)
+    @app_commands.autocomplete(plot=get_plots_autocomplete)
     async def edit(self, interaction: discord.Interaction,
                    session_id: int,
                    session_name: typing.Optional[str],
@@ -1315,19 +1334,46 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                    play_location: typing.Optional[str],
                    game_link: typing.Optional[str],
                    hammer_time: typing.Optional[str],
+                   group_id: typing.Optional[int],
                    overview: typing.Optional[str],
                    description: typing.Optional[str],
-                   region: typing.Optional[discord.Role],
                    plot: typing.Optional[str],
-                   overflow: typing.Optional[discord.app_commands.Choice[int]]):
+                   region: typing.Optional[discord.Role],
+                   overflow: typing.Optional[discord.app_commands.Choice[int]] = 1):
         """Create a new session."""
         await interaction.response.defer(thinking=True, ephemeral=True)
+        if game_link is not None:
+            if not validate_vtt(game_link)[0] and not validate_worldanvil_link(game_link):
+                await interaction.followup.send(
+                    "Invalid Game Link or WorldAnvil Link. Please use a valid link (e.g. Foundry VTT, Roll20, Fantasy Grounds) or a WorldAnvil link.",
+                    ephemeral=True)
+                return
         try:
             build_info = await build_edit_info(
                 gm_name=interaction.user.name,
                 guild_id=interaction.guild_id,
                 session_id=session_id)
-
+            if hammer_time:
+                complex_hammer_time_valid = await complex_validate_hammertime(
+                guild_id=interaction.guild_id,
+                author_name=interaction.user.name,
+                hammertime=hammer_time)
+                if complex_hammer_time_valid[0] is False:
+                    hammer_time_data = validate_hammertime(hammer_time)
+                else:
+                    hammer_time_data = complex_hammer_time_valid[1]
+                if not hammer_time_data[0]:
+                    await interaction.followup.send(f"Please provide a valid time: {hammer_time_data[1]}.")
+                    return
+                else:
+                    (date, time, arrival, hammer_time_stamp) = hammer_time_data[2]
+                    if hammer_time_data[1]:
+                        hammer_time_field = f"{date} at {time} which is {arrival}"
+                    else:
+                        hammer_time_field = f"{hammer_time}"
+            else:
+                hammer_time_stamp = None
+                hammer_time_field = None # Ensure hammer_time_field is defined if hammer_time is None
             if build_info is not None:
                 (build_info_base, message, session_thread) = build_info
                 build_info_base.session_name = session_name if session_name is not None else build_info_base.session_name
@@ -1336,7 +1382,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                 build_info_base.player_limit = player_limit if player_limit is not None else build_info_base.player_limit
                 build_info_base.play_location = play_location if play_location is not None else build_info_base.play_location
                 build_info_base.game_link = game_link if game_link is not None else build_info_base.game_link
-                build_info_base.hammer_time = hammer_time if hammer_time is not None else build_info_base.hammer_time
+                build_info_base.hammer_time = hammer_time_stamp if hammer_time_stamp is not None else build_info_base.hammer_time
                 build_info_base.overview = overview if overview is not None else build_info_base.overview
                 build_info_base.description = description if description is not None else build_info_base.description
                 build_info_base.plot = plot if plot is not None else build_info_base.plot
@@ -1359,31 +1405,27 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                                 build_info_base.session_range += f" and {evaluated_region_range[0].mention}"
                         elif build_info_base.overflow == 4:
                             build_info_base.session_range += "\r\n Any level can join."
-                if game_link:
-                    game_link_valid = shared_functions.validate_vtt(game_link)
-                    if not game_link_valid[0]:
-                        await interaction.followup.send(
-                            f"Please provide a valid VTT link. You submitted {game_link} \r\n {game_link_valid[1]}")
-                        return
+                # if game_link: # This validation is now at the top
+                #     game_link_valid = shared_functions.validate_vtt(game_link)
+                #     if not game_link_valid[0]:
+                #         await interaction.followup.send(
+                #             f"Please provide a valid VTT link. You submitted {game_link} \r\n {game_link_valid[1]}")
+                #         return
                 time = None
-                hammer_time_valid = shared_functions.validate_hammertime(build_info_base.hammer_time)
-                if not hammer_time_valid[0]:
-                    hammer_time_field = hammer_time
-                else:
-                    if hammer_time_valid[1]:
-                        (date, time, arrival, hammer_time) = hammer_time_valid[2]
-                        hammer_time_field = f"{date} at {time} which is {arrival}"
+                if build_info_base.hammer_time: # Only validate if hammer_time exists
+                    hammer_time_valid = validate_hammertime(build_info_base.hammer_time)
+                    if not hammer_time_valid[0]:
+                        hammer_time_field = hammer_time
                     else:
-                        (date, time, arrival) = hammer_time_valid[2]
-                        await interaction.followup.send(
-                            f"Please provide a valid hammer time. Your session of {date} at {time} which is {arrival} would occur IN THE PAST and humans haven't discovered time travel yet..")
-                        return
-                if plot:
-                    plot_valid = shared_functions.validate_worldanvil_link(guild_id=interaction.guild.id,
-                                                                           article_id=plot)
-                    if not plot_valid:
-                        await interaction.followup.send(f"Please provide a valid plot link. You submitted {plot}")
-                        return
+                        if hammer_time_valid[1]:
+                            (date, time, arrival, hammer_time) = hammer_time_valid[2]
+                            hammer_time_field = f"{date} at {time} which is {arrival}"
+                        else:
+                            (date, time, arrival) = hammer_time_valid[2]
+                            await interaction.followup.send(
+                                f"Please provide a valid hammer time. Your session of {date} at {time} which is {arrival} would occur IN THE PAST and humans haven't discovered time travel yet..")
+                            return
+
                 session_update = await edit_session(build_info_base, session_id=session_id)
                 if not session_update:
                     await interaction.followup.send(
@@ -1407,7 +1449,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                         (embed, session_channel) = await create_session_embed(embed_info=embed_information)
                         if time:
                             now = datetime.datetime.now(datetime.timezone.utc)
-                            session_start_time = shared_functions.parse_hammer_time_to_iso(hammer_time)
+                            session_start_time = parse_hammer_time_to_iso(hammer_time)
                             time_difference = session_start_time - now
                             timeout_time = int(time_difference.total_seconds())
                         else:
@@ -1421,7 +1463,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                             content = f"{build_info_base.session_range}"
                             content += f"\r\n {interaction.user.mention} is running a session"
                             content += f" in <@&{build_info_base.region}>!" if build_info_base.region else "!"
-                            content += F"\r\n THIS IS AN LM SESSION, IF YOU HAVE NOT PREPARED TO DIE, PUSSY OUT NOW... YOU SHOULD BE SCARED. YOU SHOULD BE SCARED OF DEATH. IF YOU ARE GOING TO GET UPSETTI OVER THIS SPHAGHETTI THIS IS NOT THE SESSION FOR YOU." if interaction.user.id == 237394424815026176 else ""
+                            content += F"\r\n THIS IS AN LM SESSION, IF YOU HAVE NOT PREPARED TO DIE, PUSSY OUT NOW... YOU SHOULD BE SCARED. YOU SHOULD BE SCARED OF DEATH. IF YOU ARE GOING TO GET UPSETTI OVER THIS SPAGHETTI THIS IS NOT THE SESSION FOR YOU." if interaction.user.id == 237394424815026176 else ""
                             await announcement_message.edit(content=content, embed=embed,
                                                             view=view)
                             clear_session_reminders(
@@ -1449,6 +1491,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
             await interaction.followup.send("An error occurred whilst editing a session. Please try again later.")
 
     @session_group.command(name='delete', description='Delete a session!')
+    @app_commands.autocomplete(session_id=player_session_autocomplete)
     async def delete(self, interaction: discord.Interaction, session_id: int):
         """Delete an ACTIVE Session."""
         await interaction.response.defer(thinking=True, ephemeral=True)
@@ -1467,12 +1510,12 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                         session_id=session_id,
                         start_time=hammer_time,
                         jobs_to_schedule=scheduled_jobs)
-                    embed = discord.Embed(title=f"{info[1]}", description=f"This session has been cancelled.",
+                    embed = discord.Embed(title=f"{info[2]}", description=f"This session has been cancelled.",
                                           color=discord.Colour.red())
                     embed.set_author(name=f'{interaction.user.name}')
                     embed.set_footer(text=f'Session ID: {session_id}.')
-                    async with shared_functions.config_cache.lock:
-                        configs = shared_functions.config_cache.cache.get(interaction.guild.id)
+                    async with config_cache.lock:
+                        configs = config_cache.cache.get(interaction.guild.id)
                         if configs:
                             session_channel_info = configs.get('Sessions_Channel')
 
@@ -1506,16 +1549,43 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
             logging.exception(f"An error occurred whilst deleting a session: {e}")
             await interaction.followup.send("An error occurred whilst deleting a session. Please try again later.")
 
+
+    @gamemaster_group.command(name='announce', description='Announce a message to a channel')
+    async def announce(self, interaction: discord.Interaction, role: discord.Role, announcement_channel: discord.TextChannel, message: str):
+        """Announce a message to a channel."""
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        try:
+            if role.mentionable:
+
+                await interaction.channel.send(f"Announcing to {role.mention}:\n{message}")
+            else:
+
+                try:
+                    await role.edit(mentionable=True)
+                    await announcement_channel.send(f"Announcing to {role.mention}:\n{message}")
+                    await role.edit(mentionable=False)
+                except discord.errors.Forbidden:
+                    await announcement_channel.send(f"Announcing to {role.name}:\n{message}")
+
+            await interaction.followup.send('announcement sent')
+        except discord.errors.HTTPException:
+            logging.exception(f"Error in announce command")
+        finally:
+            return
+
+
     @session_group.command(name='accept', description='accept the players into a session!')
-    @app_commands.autocomplete(specific_character=shared_functions.character_select_autocompletion)
+    @app_commands.autocomplete(specific_character=character_select_autocompletion)
     @app_commands.describe(randomize="for the purposes of picking a number of randomized players")
     @app_commands.describe(
         specific_character="Picking a specific player's character. You will have to use their CHARACTER Name for this.")
-    async def accept(self, interaction: discord.Interaction, session_id: int, player_1: typing.Optional[discord.Member],
+    async def accept(self, interaction: discord.Interaction,
+                     session_id: int, player_1: typing.Optional[discord.Member],
                      player_2: typing.Optional[discord.Member], player_3: typing.Optional[discord.Member],
                      player_4: typing.Optional[discord.Member], player_5: typing.Optional[discord.Member],
-                     player_6: typing.Optional[discord.Member], specific_character: typing.Optional[str],
-                     randomize: int = 0):
+                     player_6: typing.Optional[discord.Member],
+                     specific_character: typing.Optional[str],
+                     randomize: typing.Optional[int]):
         """GM: Accept player Sign-ups into your session for participation"""
         await interaction.response.defer(thinking=True)
         print(randomize)
@@ -1525,7 +1595,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
             player_list = [member.id for member in player_members]
             if not specific_character and randomize == 0 and len(player_list) == 0:
                 await interaction.followup.send(
-                    "Please provide at least one method to accept players into the session (players, specific character, or randomize).")
+                    "Please provide at least one method to accept players into the session (specific character or randomize).")
             else:
                 async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as db:
                     cursor = await db.cursor()
@@ -1538,7 +1608,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                             f"Invalid Session ID of {session_id} associated with host {interaction.user.name}")
                     else:
                         (session_name, play_location, hammer_time, game_link, session_thread, isactive) = session_info
-                        hammer_validated = shared_functions.validate_hammertime(hammer_time)
+                        hammer_validated = validate_hammertime(hammer_time)
                         if not isactive:
                             await interaction.followup.send(
                                 f"Session {session_name} is not active and cannot accept players.")
@@ -1620,8 +1690,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                                                         value=f"Could not be accepted with player: <@{player_id}>")
                                 else:
                                     content += f" <@{player_id}> could not be accepted! Player not found in the signup list!"
-                        # handle randomize
-                        if randomize > 0:
+                        if randomize and randomize > 0:
                             print(randomize)
                             await cursor.execute(
                                 "SELECT Player_ID, Character_Name FROM Sessions_Signups WHERE Session_ID = ?",
@@ -1672,7 +1741,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
     async def remove(self, interaction: discord.Interaction, session_id: int, player: discord.Member):
         await interaction.response.defer(thinking=True, ephemeral=True)
         try:
-            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as db:
                 cursor = await db.cursor()
                 await cursor.execute(
                     "SELECT Session_Name, Play_location, hammer_time, game_link, IsActive, Gold, Essence, Alt_Reward_All FROM Sessions WHERE Session_ID = ?",
@@ -1707,10 +1776,10 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                                 f"{player.name} has been removed from Session {session_info[0]} with ID: {session_id}")
                     else:
                         await cursor.execute(
-                            """SELECT 
-                            Player_ID, Player_Name, Character_Name, 
-                            Level, Tier, Effective_Gold, Received_Milestones, Received_Trials, 
-                            Received_Gold, Received_Fame, Received_Prestige, Received_Essence, 
+                            """SELECT
+                            Player_ID, Player_Name, Character_Name,
+                            Level, Tier, Effective_Gold, Received_Milestones, Received_Trials,
+                            Received_Gold, Received_Fame, Received_Prestige, Received_Essence,
                             Gold_Transaction_ID FROM Sessions_Archive WHERE Session_ID = ? and Player_Name = ?""",
                             (session_id, player.name))
                         reward_info = await cursor.fetchone()
@@ -1778,6 +1847,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
             summary: str = None
     ):
         """GM: Reward Players for Participating in your session."""
+        print("I got hooked for rewards")
         awarded_essence = 10
         await interaction.response.defer(thinking=True, ephemeral=True)
         if gold < 0 or easy < 0 or medium < 0 or hard < 0 or deadly < 0 or awarded_essence < 0 or trials < 0:
@@ -1794,6 +1864,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                     (session_id,))
                 session_info = await cursor.fetchone()
                 if session_info is not None:
+                    print("I got hooked for the session")
                     (gm_name, session_name, session_range, play_location, hammer_time, message, session_thread,
                      is_active, plot) = session_info
                     if is_active == 1:
@@ -1823,10 +1894,11 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                             await interaction.followup.send(
                                 f"No players could be found participating in session with {session_id}")
                         else:
+                            print("I got hooked for the correct session and am doing rewards")
                             if summary:
                                 significance = max(1,
                                                    5 - (easy * 1 + medium * 2 + hard * 3 + deadly * 4 + trials * 2))
-                                world_anvil = await shared_functions.put_wa_report(
+                                world_anvil = await put_wa_report(
                                     guild_id=interaction.guild_id,
                                     session_id=session_id,
                                     author=gm_name,
@@ -1844,9 +1916,11 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                                 embed = discord.Embed(title=session_name, description=f"Reward Display",
                                                       color=discord.Colour.green())
                             embed.set_footer(text=f"Session ID is {session_id}")
+                            print("I handling players")
                             for player in session_players:
                                 (player_name, player_id, character_name, level, tier, effective_wealth) = player
                                 mentions += f"<@{player[1]}> "
+                                print(player_name)
                                 session_reward = await session_reward_calculation(
                                     interaction=interaction,
                                     author_name=gm_name,
@@ -1878,20 +1952,20 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                                     changes += f"\r\n{session_reward_embed.milestones_total} Milestones" if session_reward_embed.milestones_total else ""
                                     changes += f", {session_reward_embed.trials} Trials" if session_reward_embed.trial_change else ""
                                     embed.add_field(name=character_name, value=changes)
-                                    await shared_functions.log_embed(
+                                    await log_embed(
                                         change=session_reward_embed,
                                         guild=interaction.guild,
                                         thread=player_thread,
                                         bot=self.bot)
-                                    await shared_functions.character_embed(
+                                    await character_embed(
                                         character_name=character_name,
                                         guild=interaction.guild)
                                     await cursor.execute(
                                         "Delete from Sessions_Participants where Session_ID = ? and Player_Name = ?",
                                         (session_id, player_name))
                                     await db.commit()
-                            async with shared_functions.config_cache.lock:
-                                configs = shared_functions.config_cache.cache.get(interaction.guild.id)
+                            async with config_cache.lock:
+                                configs = config_cache.cache.get(interaction.guild.id)
                                 if configs:
 
                                     quest_rewards_channel_id = configs.get('Quest_Rewards_Channel')
@@ -1979,17 +2053,17 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                             (character_name,))
                         thread_id = await cursor.fetchone()
                         if thread_id:
-                            logging_info = shared_functions.CharacterChange(
+                            logging_info = CharacterChange(
                                 character_name=character_name,
                                 author=interaction.user.name,
                                 source=f"Endowment: {reward}"
                             )
-                            await shared_functions.log_embed(
+                            await log_embed(
                                 bot=self.bot,
                                 change=logging_info,
                                 guild=interaction.guild,
                                 thread=thread_id[0])
-                            player_rewards.remove((player_id, reward))
+                            # player_rewards.remove((player_id, reward)) # This line would cause issues if player_rewards is iterated over
                             await cursor.execute(
                                 "UPDATE Sessions_Archive SET Alt_Reward_Personal = ? where Player_ID = ? and Session_ID = ?",
                                 (
@@ -2013,7 +2087,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
             await interaction.followup.send(f"An error occurred: {str(e)}")
 
     @session_group.command(name='claim', description='Claim rewards for a session!')
-    @app_commands.autocomplete(character_name=shared_functions.own_character_select_autocompletion)
+    @app_commands.autocomplete(character_name=own_character_select_autocompletion)
     async def claim(self, interaction: discord.Interaction, session_id: int, character_name: str):
         await interaction.response.defer(thinking=True, ephemeral=True)
         try:
@@ -2100,12 +2174,12 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                                 await interaction.followup.send(session_reward)
                             else:
                                 (session_reward_embed, player_thread) = session_reward
-                                log_message = await shared_functions.log_embed(
+                                log_message = await log_embed(
                                     change=session_reward_embed,
                                     guild=interaction.guild,
                                     thread=player_thread,
                                     bot=self.bot)
-                                await shared_functions.character_embed(character_name=character_name,
+                                await character_embed(character_name=character_name,
                                                                        guild=interaction.guild)
                                 await interaction.followup.send(embed=log_message)
         except (aiosqlite.Error, TypeError, ValueError) as e:
@@ -2211,7 +2285,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                 "An error occurred whilst displaying session information. Please try again later.")
 
     @group_group.command(name='delete', description='delete a group!')
-    @app_commands.autocomplete(group_id=shared_functions.group_id_autocompletion)
+    @app_commands.autocomplete(group_id=group_id_autocompletion)
     async def delete(self, interaction: discord.Interaction, group_id: int):
         """GM: Delete a group from the database."""
         await interaction.response.defer(thinking=True, ephemeral=True)
@@ -2230,113 +2304,94 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
             logging.exception(f"An error occurred whilst deleting group {group_id}: {e}")
             await interaction.followup.send("An error occurred whilst deleting a group. Please try again later.")
 
-    @worldanvil_group.command(name='plot', description='Create a new world anvil article!')
-    @app_commands.describe(summary="Use a google drive link, or write a summary about the occasion.")
-    @app_commands.autocomplete(plot=shared_functions.get_plots_autocomplete)
-    async def plot(self, interaction: discord.Interaction, plot: str, summary: str):
-        """Notify players about an ACTIVE Session."""
-        """Sessions Folder is: b71f939a-f72d-413b-b4d7-4ebff1e162ca"""
+    @worldanvil_group.command(name='plot', description='Create a plot from a WorldAnvil article!')
+    async def plot(self, interaction: discord.Interaction, article_link: str, session_id: typing.Optional[int],
+                   group_id: typing.Optional[int]):
+        # Extract the article ID from the link
+        article_id = extract_document_id(article_link)
+        if article_id is None:
+            await interaction.response.send_message("Invalid WorldAnvil Link.", ephemeral=True)
+            return
+
+        # Fetch the article from WorldAnvil
         try:
-            guild_id = interaction.guild_id
-            author = interaction.user.name
             await interaction.response.defer(thinking=True, ephemeral=True)
-            print(plot)
-            if summary is None:
-                await interaction.followup.send(f"No summary available.")
+            article_data = await put_wa_article(interaction.guild, article_id)
+            if not article_data:
+                await interaction.followup.send("Failed to fetch article from WorldAnvil.", ephemeral=True)
                 return
-            elif plot[:2] == "1-":
-                plot_length = len(plot)
-                plot_id = plot[2:plot_length]
-                await shared_functions.patch_wa_article(
-                    guild_id=guild_id,
-                    article_id=plot_id,
-                    overview=summary)
 
-                await interaction.followup.send(f"Plot {plot_id} has been edited")
-            elif plot[:2] == '2-':
-                plot = str.replace(
-                    str.replace(str.replace(str.replace(str.replace(str.title(plot), ";", ""), "(", ""), ")", ""), "[",
-                                ""),
-                    "]", "")
+            title = article_data.get('title')
+            content = article_data.get('content') # Assuming content is available or can be fetched
 
-                async with shared_functions.config_cache.lock:
-                    configs = shared_functions.config_cache.cache.get(interaction.guild.id)
-                    if configs:
-                        plot_info = configs.get('WA_Plot_Folder')
+            async with aiosqlite.connect(f'pathparser_{interaction.guild.id}.sqlite') as db:
+                await db.execute(
+                    "INSERT INTO Plots (Plot_Name, Plot_Description, WorldAnvil_ID, Guild_ID) VALUES (?, ?, ?, ?) ON CONFLICT(WorldAnvil_ID) DO UPDATE SET Plot_Name=excluded.Plot_Name, Plot_Description=excluded.Plot_Description",
+                    (title, content, article_id, interaction.guild.id))
+                await db.commit()
+                await interaction.followup.send(f"Plot {title} has been created!", ephemeral=True)
+                if session_id:
+                    await db.execute("UPDATE Sessions SET Plot = ? WHERE Session_ID = ?",
+                                     (article_id, session_id))
+                    await db.commit()
+                    await interaction.followup.send(f"Session {session_id} has been updated with the plot!",
+                                                    ephemeral=True)
 
-                if plot_info is None:
-                    await interaction.followup.send(
-                        f"An error occurred whilst creating a plot. Please try again later.")
-                    return
-                else:
-                    plot_length = len(plot)
-                    plot_name = plot[2:plot_length]
-                    await shared_functions.put_wa_article(
-                        guild_id=guild_id,
-                        category=plot_info,
-                        overview=summary,
-                        author=author,
-                        title=plot_name,
-                        template='Plot'
-                    )
-                    await interaction.followup.send(f"Plot {plot_name} has been created.")
-            else:
-                await interaction.followup.send(f"Please select a choice from the menu.")
-        except (aiosqlite.Error, discord.DiscordException, TypeError, ValueError) as e:
-            logging.exception(f"An error occurred whilst creating a plot: {e}")
-            await interaction.followup.send("An error occurred whilst creating a plot. Please try again later.")
+        except Exception as e:
+            logging.exception(f"Failed to create plot: {e}")
+            await interaction.followup.send("Failed to create plot.", ephemeral=True)
 
-    @worldanvil_group.command(name='report', description='Create a new world anvil article!')
-    @app_commands.describe(summary="Use a google drive link, or write a summary about the occasion.")
-    @app_commands.autocomplete(plot=shared_functions.session_autocompletion)
-    async def report(self, interaction: discord.Interaction, session_id: int, summary: str, plot: typing.Optional[str]):
-        """Report on a historical session"""
-        if plot is not None:
-            plot = str.replace(
-                str.replace(str.replace(str.replace(str.replace(str.title(plot), ";", ""), "(", ""), ")", ""), "[", ""),
-                "]", "")
-            if ' ' in plot or '-' not in plot:
-                plot = await shared_functions.get_plots_autocomplete(interaction, plot)
+    @worldanvil_group.command(name='report', description='Create a report from a WorldAnvil article!')
+    @app_commands.autocomplete(session_id=player_session_autocomplete)
+    async def report(self, interaction: discord.Interaction, session_id: int):
         await interaction.response.defer(thinking=True, ephemeral=True)
-        async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as conn:
-            cursor = await conn.cursor()
-            await cursor.execute(
-                "SELECT GM_Name, Session_Name, Article_Link, Article_ID, History_ID, Related_Plot, Easy, Medium, Hard, Deadly, Trials FROM Sessions WHERE Session_ID = ? AND GM_Name = ? AND IsActive = 0",
-                (session_id, interaction.user.name))
-            session_info = await cursor.fetchone()
-            if session_info is None:
-                await interaction.followup.send(f"No completed Session with ID {session_id} could be found!")
-            else:
-                (gm_name, session_name, article_link, article_id, history_id, related_plot, easy, medium, hard, deadly,
-                 trials) = session_info
-                plot = related_plot if plot is None else plot
-                if article_id is None:
-                    significance = min(5, 0 + easy + (2 * medium) + (3 * hard) + (4 * deadly) + (2 * trials))
-                    report_info = await shared_functions.put_wa_report(
-                        guild_id=interaction.guild_id,
-                        session_id=session_id,
-                        author=interaction.user.name,
-                        overview=summary,
-                        plot=plot,
-                        significance=significance
-                    )
-                    if not report_info:
-                        await interaction.followup.send(
-                            "An error occurred whilst creating a report. Please try again later.")
+        try:
+            async with aiosqlite.connect(f'pathparser_{interaction.guild.id}.sqlite') as db:
+                cursor = await db.cursor()
+                await cursor.execute(
+                    "SELECT Session_Name, Overview, Related_Plot, Easy, Medium, Hard, Deadly, Trials, Article_ID FROM Sessions WHERE Session_ID = ? AND GM_Name = ? AND IsActive = 0",
+                    (session_id, interaction.user.name))
+                session_info = await cursor.fetchone()
+                if session_info:
+                    (session_name, overview, related_plot, easy, medium, hard, deadly, trials, article_id) = session_info
+
+                    significance = max(1, 5 - (easy * 1 + medium * 2 + hard * 3 + deadly * 4 + trials * 2))
+
+                    if article_id:
+                        result = await patch_wa_report(
+                            guild_id=interaction.guild.id,
+                            article_id=article_id,
+                            overview=overview,
+                            significance=significance
+                        )
+                        if result:
+                            await interaction.followup.send(f"Report for session {session_name} has been updated!", ephemeral=True)
+                        else:
+                            await interaction.followup.send("Failed to update report.", ephemeral=True)
                     else:
-                        (article, timeline) = report_info
-                        await cursor.execute(
-                            "UPDATE Related_Plot = ? history_id = ? article_id = ? article_link = ? WHERE Session_ID = ?",
-                            (plot, timeline['id'], article['id'], article['url'], session_id))
-                        await interaction.followup.send(
-                            f"Session Report for {session_info[1]} has been created with [{session_id}: {session_name}](<{article['url']}>).")
+                        report_info = await put_wa_report(
+                            guild_id=interaction.guild.id,
+                            session_id=session_id,
+                            author=interaction.user.name,
+                            overview=overview,
+                            plot=related_plot,
+                            significance=significance
+                        )
+                        if report_info:
+                            (article, timeline) = report_info
+                            await cursor.execute(
+                                "UPDATE Sessions SET Article_ID = ?, Article_Link = ?, History_ID = ? WHERE Session_ID = ?",
+                                (article['id'], article['url'], timeline['id'], session_id))
+                            await db.commit()
+                            await interaction.followup.send(f"Report for session {session_name} has been created with [{session_id}: {session_name}](<{article['url']}>).", ephemeral=True)
+                        else:
+                            await interaction.followup.send("Failed to create report.", ephemeral=True)
                 else:
-                    await shared_functions.patch_wa_report(
-                        guild_id=interaction.guild_id,
-                        session_id=session_id,
-                        overview=summary
-                    )
-                    await interaction.followup.send(f"Session Report for {session_info[1]} has been edited.")
+                    await interaction.followup.send(f"No completed Session with ID {session_id} could be found for you!", ephemeral=True)
+
+        except Exception as e:
+            logging.exception(f"Failed to create report: {e}")
+            await interaction.followup.send("Failed to create report.", ephemeral=True)
 
     @group_group.command(name="display", description="display the overall availability of a group!")
     @app_commands.choices(
@@ -2385,10 +2440,224 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                 ephemeral=True
             )
 
+    @rumor_group.command(name="add", description="Add a new rumor, let it be a spicy bit of hearsay!")
+    @app_commands.autocomplete(kingdom=kingdom_autocomplete)
+    @app_commands.autocomplete(settlement=settlement_autocomplete)
+    async def add_rumor(
+            self,
+            interaction: discord.Interaction,
+            kingdom: str,
+            dc: int,
+            rumor: str,
+            settlement: str = 'All',
+            weight: int = 1
+            ):
+        """Display the overall availability of a range of groups"""
+        guild_id = interaction.guild_id
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        try:
+            async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as conn:
+                cursor = await conn.cursor()
+                if kingdom != 'All':
+                    await cursor.execute("Select Kingdom from KB_Kingdoms where Kingdom = ?", (kingdom,))
+                    kingdom_check = await cursor.fetchone()
+                    if not kingdom_check:
+                        await interaction.followup.send(f"{kingdom} was not valid.", ephemeral=True)
+                        return
+                if settlement != 'All':
+                    await cursor.execute("Select Kingdom from KB_Settlements where Settlement = ?",(settlement,))
+                    settlement_check = await cursor.fetchone()
+                    if not settlement_check:
+                        await interaction.followup.send(f"Settlement: {settlement} was not valid.", ephemeral=True)
+                        return
+                    kingdom = settlement_check[0]
+                if not 0 < dc < 1000:
+                    await interaction.followup.send(f"DC: {dc} - Either you made this DC the easiest thing in the world, or you're goddamn insane. Or... You're WonTruthHypocrisy. That's a tautology in that case.", ephemeral=True)
+                    return
+                if weight < 1:
+                    await interaction.followup.send(f"Weight: {weight} - Your rumor so thin her asian parents don't call her fat. It's also so improbably it can't happen. So. You know. Fix that", ephemeral=True)
+                    return
+                await cursor.execute("Insert into Rumors(Kingdom, Settlement, DC, Rumor, Weight) values (?, ?, ?, ?, ?)",
+                                     (kingdom, settlement, dc, rumor, weight))
+                await conn.commit()
+                await cursor.execute("SELECT MAX(RumorID) from Rumors")
+                rumor_id = await cursor.fetchone()
+                await interaction.followup.send(f"RumorID: {rumor_id[0]} Created. It'll be heard in the kingdom {kingdom} and the settlement - {settlement} with a weighted likelihood of {weight}", ephemeral=True)
+        except (aiosqlite.Error, TypeError, ValueError) as e:
+            logging.exception(
+                f"an error occurred creating a rumor: {e}"
+            )
+            await interaction.followup.send(
+                f"An error occurred whilst fetching data. Please try again later.",
+                ephemeral=True)
+
+    @rumor_group.command(name="edit", description="Edita rumor, let it be a spicy bit of hearsay!")
+    @app_commands.autocomplete(kingdom=kingdom_autocomplete)
+    @app_commands.autocomplete(settlement=settlement_autocomplete)
+    async def edit_rumor(
+            self,
+            interaction: discord.Interaction,
+            rumor_id: int,
+            kingdom: typing.Optional[str],
+            dc: typing.Optional[int],
+            rumor: typing.Optional[str],
+            settlement: typing.Optional[str],
+            weight: typing.Optional[int]
+    ):
+        """Display the overall availability of a range of groups"""
+        guild_id = interaction.guild_id
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        try:
+            async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as conn:
+                cursor = await conn.cursor()
+                if kingdom and kingdom != 'All':
+                    await cursor.execute("Select Kingdom from KB_Kingdoms where Kingdom = ?", (kingdom,))
+                    kingdom_check = await cursor.fetchone()
+                    if not kingdom_check:
+                        await interaction.followup.send(f"{kingdom} was not valid.", ephemeral=True)
+                        return
+                if settlement and settlement != 'All':
+                    await cursor.execute("Select Kingdom from KB_Settlements where Settlement = ?", (settlement,))
+                    settlement_check = await cursor.fetchone()
+                    if not settlement_check:
+                        await interaction.followup.send(f"Settlement: {settlement} was not valid.", ephemeral=True)
+                        return
+                    kingdom = settlement_check[0]
+                if dc and not 0 < dc < 1000:
+                    await interaction.followup.send(
+                        f"DC: {dc} - Either you made this DC the easiest thing in the world, or you're goddamn insane. Or... You're WonTruthHypocrisy. That's a tautology in that case.",
+                        ephemeral=True)
+                    return
+                if weight and weight < 1:
+                    await interaction.followup.send(
+                        f"Weight: {weight} - Your rumor so thin her asian parents don't call her fat. It's also so improbably it can't happen. So. You know. Fix that",
+                        ephemeral=True)
+                    return
+                await cursor.execute("Select Kingdom from Rumors where RumorID = ?", (rumor_id,))
+                rumor_info = await cursor.fetchone()
+                if not rumor_info:
+                    interaction.followup.send(f"No rumors were found by the id {rumor_id}.", ephemeral=True)
+                    return
+                await cursor.execute("""
+                    Update Rumors SET 
+                    Kingdom = Coalesce(?, kingdom), 
+                    Settlement = Coalesce(?, settlement), 
+                    DC = Coalesce(? , DC),
+                    Rumor = Coalesce(?, rumor), 
+                    Weight = Coalesce(?, Weight)
+                    Where RumorID = ?
+                    """,
+                    (kingdom, settlement, dc, rumor, weight, rumor_id))
+                await conn.commit()
+                rumor_id = await cursor.fetchone()
+                await interaction.followup.send(
+                    f"RumorID: {rumor_id} has been updated.",
+                    ephemeral=True)
+        except (aiosqlite.Error, TypeError, ValueError) as e:
+            logging.exception(
+                f"an error occurred creating a rumor: {e}"
+            )
+            await interaction.followup.send(
+                f"An error occurred whilst fetching data. Please try again later.",
+                ephemeral=True)
+
+    @rumor_group.command(name="Delete", description="Delete a rumor!")
+    async def delete_rumor(
+            self,
+            interaction: discord.Interaction,
+            rumor_id: int
+    ):
+        """Display the overall availability of a range of groups"""
+        guild_id = interaction.guild_id
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        try:
+            async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as conn:
+                cursor = await conn.cursor()
+
+                rumor_info = await cursor.fetchone()
+                if not rumor_info:
+                    interaction.followup.send(f"No rumors were found by the ID {rumor_id}.", ephemeral=True)
+                    return
+                await cursor.execute("""Delete from Rumors Where RumorID = ?
+                    """,
+                    (rumor_id,))
+                await conn.commit()
+                rumor_id = await cursor.fetchone()
+                await interaction.followup.send(
+                    f"RumorID: {rumor_id} has been removed.",
+                    ephemeral=True)
+        except (aiosqlite.Error, TypeError, ValueError) as e:
+            logging.exception(
+                f"an error occurred creating a rumor: {e}"
+            )
+            await interaction.followup.send(
+                f"An error occurred whilst fetching data. Please try again later.",
+                ephemeral=True)
+
+    @rumor_group.command(name='display', description='Display rumors!')
+    async def display_rumor(self, interaction: discord.Interaction, session_id: int,
+                            kingdom: typing.Optional[str], settlement: typing.Optional[str],
+                      group: discord.app_commands.Choice[int] = 1, page_number: int = 1
+                            ):
+        """ALL: THIS COMMAND DISPLAYS SESSION INFORMATION"""
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        try:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as conn:
+                cursor = await conn.cursor()
+                if kingdom and settlement:
+                    await cursor.execute("Select Count(*) from Rumors where kingdom = ? and Settlement = ?", (kingdom, settlement))
+                    rumor_info = await cursor.fetchone()
+                    count = int(rumor_info[0])
+                    if count == 0:
+                        await interaction.followup.send(f"There are no rumors for kingdom of {kingdom} and settlement of {settlement}")
+                        return
+                elif kingdom:
+                    await cursor.execute("Select Count(*) from Rumors where kingdom = ?", (kingdom, ))
+                    rumor_info = await cursor.fetchone()
+                    count = int(rumor_info[0])
+                    if count == 0:
+                        await interaction.followup.send(f"There are no rumors for kingdom of {kingdom}")
+                        return
+                elif settlement:
+                    await cursor.execute("Select Count(*) from Rumors where settlement = ?", (settlement, ))
+                    rumor_info = await cursor.fetchone()
+                    count = int(rumor_info[0])
+                    if count == 0:
+                        await interaction.followup.send(f"There are no rumors for settlement of {settlement}")
+                        return
+                else:
+                    await cursor.exexcute("Select Count(*) from rumors")
+                    rumor_info = await cursor.fetchone()
+                    count = int(rumor_info[0])
+                    if count == 0:
+                        await interaction.followup.send("This list of rumors so lonely there are none of them.")
+                        return
+                cursor = await conn.execute("SELECT COUNT(*) FROM Sessions_Signups WHERE Session_ID = ?",
+                                                (session_id,))
+                # Set up pagination variables
+                page_number = min(max(page_number, 1), math.ceil(count / 10))
+                items_per_page = 10
+                offset = (page_number - 1) * items_per_page
+                # Create and send the view with the results
+                view = RumorShopView(
+                    user_id=interaction.user.id,
+                    guild_id=interaction.guild.id,
+                    limit=items_per_page,
+                    offset=offset,
+                    interaction=interaction,
+                    kingdom=kingdom,
+                    settlement=settlement,
+                )
+                await view.send_initial_message()
+        except (aiosqlite.Error, TypeError, ValueError) as e:
+            logging.exception(f"An error occurred whilst displaying session information: {e}")
+            await interaction.followup.send(
+                "An error occurred whilst displaying session information. Please try again later.")
+
 
 # Base Views for displaying a session
 # Dual View Type Views
-class SessionDisplayView(shared_functions.DualView):
+class SessionDisplayView(DualView):
     def __init__(self, user_id: int, guild_id: int, offset: int, limit: int, view_type: int,
                  interaction: discord.Interaction, session_id: int):
         super().__init__(user_id=user_id, guild_id=guild_id, offset=offset, limit=limit, view_type=view_type,
@@ -2466,7 +2735,7 @@ class SessionDisplayView(shared_functions.DualView):
 
 
 # Base Views for accepting or rejecting a decision
-class ReplaceRewardsView(shared_functions.SelfAcknowledgementView):
+class ReplaceRewardsView(SelfAcknowledgementView):
     def __init__(self,
                  content: str,
                  interaction: discord.Interaction,
@@ -2504,9 +2773,9 @@ class ReplaceRewardsView(shared_functions.SelfAcknowledgementView):
             field += "failed to remove rewards, skipping adjustment. \r\n "
         else:
             (reversal_dataclass, thread_id) = session_reversal
-            await shared_functions.log_embed(change=reversal_dataclass, guild=interaction.guild,
+            await log_embed(change=reversal_dataclass, guild=interaction.guild,
                                              thread=thread_id, bot=self.bot)
-            await shared_functions.character_embed(
+            await character_embed(
                 character_name=self.character_origin,
                 guild=interaction.guild)
             (recipient_character_name, recipient_level, recipient_tier, recipient_gold,
@@ -2518,7 +2787,7 @@ class ReplaceRewardsView(shared_functions.SelfAcknowledgementView):
                 author_name=interaction.user.name,
                 pre_session_level=recipient_level,
                 pre_session_tier=recipient_tier,
-                pre_session_gold=recipient_gold,
+                pre_session_gold=Decimal(recipient_gold),
                 source="Session Adjustment",
                 session_base_info=self.session_rewards_info
             )
@@ -2526,9 +2795,9 @@ class ReplaceRewardsView(shared_functions.SelfAcknowledgementView):
                 field += "failed to calculate rewards, skipping adjustment. \r\n "
             else:
                 (add_reward_dataclass, thread_id) = add_rewards
-                await shared_functions.log_embed(change=add_reward_dataclass, guild=interaction.guild,
+                await log_embed(change=add_reward_dataclass, guild=interaction.guild,
                                                  thread=thread_id, bot=self.bot)
-                await shared_functions.character_embed(
+                await character_embed(
                     character_name=recipient_character_name,
                     guild=interaction.guild)
 
@@ -2543,7 +2812,7 @@ class ReplaceRewardsView(shared_functions.SelfAcknowledgementView):
         self.embed = self.embed
 
 
-class UpdateGameLinkView(shared_functions.SelfAcknowledgementView):
+class UpdateGameLinkView(SelfAcknowledgementView):
     def __init__(self,
                  announcement_message: discord.Message,
                  content: str,
@@ -2578,7 +2847,7 @@ class UpdateGameLinkView(shared_functions.SelfAcknowledgementView):
         self.embed = self.embed
 
 
-class RemoveRewardsView(shared_functions.SelfAcknowledgementView):
+class RemoveRewardsView(SelfAcknowledgementView):
     def __init__(self, content: str, interaction: discord.Interaction, discord_embed: discord.Embed, session_id: int,
                  character_name: str, session_gold: Decimal, session_rewards_info: aiosqlite.Row, bot: commands.Bot):
         super().__init__(content=content, interaction=interaction)
@@ -2610,9 +2879,9 @@ class RemoveRewardsView(shared_functions.SelfAcknowledgementView):
             self.embed.description += f" However, {session_reversal}"
         else:
             (reversal_dataclass, thread_id) = session_reversal
-            await shared_functions.log_embed(change=reversal_dataclass, guild=interaction.guild, thread=thread_id,
+            await log_embed(change=reversal_dataclass, guild=interaction.guild, thread=thread_id,
                                              bot=self.bot)
-            await shared_functions.character_embed(character_name=self.character_name, guild=interaction.guild, )
+            await character_embed(character_name=self.character_name, guild=interaction.guild, )
 
     async def rejected(self, interaction: discord.Interaction):
         """Handle the rejection logic."""
@@ -2763,7 +3032,7 @@ class JoinOrLeaveSessionView(discord.ui.View):
                                     character_names = await cursor.fetchall()
                                     return [character_name[0] for character_name in character_names]
                                 else:  # Overflow is not a role
-                                    print("no overflow validation, using level_restuls", level_range)
+                                    print("no overflow validation, using level_results", level_range)
                                     await cursor.execute(
                                         "SELECT Character_Name FROM Player_Characters WHERE Player_ID = ? AND Level >= ? AND Level <= ?",
                                         (interaction.user.id, level_range[1], level_range[2]))

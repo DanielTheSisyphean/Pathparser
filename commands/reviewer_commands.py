@@ -1,6 +1,7 @@
 import datetime
 import logging
 import os
+import typing
 from decimal import Decimal
 from typing import Tuple, Union
 import aiosqlite
@@ -8,9 +9,15 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from unidecode import unidecode
-import commands.character_commands as character_commands
-import shared_functions
-from shared_functions import name_fix
+from core.utils import name_fix, extract_document_id
+from core.config import config_cache
+from core.autocomplete import stg_character_select_autocompletion, character_select_autocompletion
+from core.worldanvil import put_wa_article
+from core.character import CharacterChange, gold_calculation, calculate_essence
+from core.display import log_embed, character_embed
+from core.views import SelfAcknowledgementView, ThreadListView
+from core.cache import autocomplete_cache
+from core.threads import claim_thread, silent_close_thread
 
 
 async def forge_character_embed(
@@ -19,7 +26,8 @@ async def forge_character_embed(
         forge_channel_id: int,
         author: discord.Member):
     try:
-        async with aiosqlite.connect(f"pathparser_{guild.id}.sqlite") as conn:
+        guild_id = guild.id
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as conn:
             cursor = await conn.cursor()
 
             # Fetch character info
@@ -88,8 +96,8 @@ async def register_character_embed(
             cursor = await conn.cursor()
 
             # Fetch channel ID
-            async with shared_functions.config_cache.lock:
-                configs = shared_functions.config_cache.cache.get(guild.id)
+            async with config_cache.lock:
+                configs = config_cache.cache.get(guild.id)
                 if configs:
                     channel_id = configs.get('Accepted_Bio_Channel')
 
@@ -308,7 +316,7 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
             await interaction.followup.send(f"Error in cleanse. {cleanse} was not valid.", ephemeral=True)
 
     @registration_group.command(name='manage', description="Accept or reject a player's character.")
-    @app_commands.autocomplete(character_name=shared_functions.stg_character_select_autocompletion)
+    @app_commands.autocomplete(character_name=stg_character_select_autocompletion)
     @app_commands.describe(status="Accepted players are moved into active and posted underneath!")
     @app_commands.choices(status=[discord.app_commands.Choice(name='Accepted!', value=1),
                                   discord.app_commands.Choice(name='Rejected!', value=2)])
@@ -319,7 +327,7 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
         guild_id = interaction.guild_id
         await interaction.response.defer(thinking=True, ephemeral=True)
         response = ""
-        async with aiosqlite.connect(f"C:/pathparser/pathparser_{guild_id}.sqlite") as db:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.cursor()
             _, character_name = name_fix(character_name)
@@ -357,8 +365,10 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
                     info_mythweavers = player_info['mythweavers']
                     info_image_link = player_info['image_link']
                     info_tmp_bio = player_info['Backstory']
-                    async with shared_functions.config_cache.lock:
-                        configs = shared_functions.config_cache.cache.get(interaction.guild.id)
+                    async with config_cache.lock:
+                        configs = config_cache.cache.get(interaction.guild.id)
+                        print("heya heya")
+                        print(configs)
                         if configs:
                             character_log_channel_id = configs.get('Char_Eventlog_Channel')
                             backstory_category = configs.get('WA_Backstory_Category')
@@ -399,7 +409,7 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
                             ephemeral=True)
                     else:
                         (info_minimum_milestones, info_milestones_to_level, info_wpl, info_level_range_id) = starting_level_info
-                        gold_calculation = await character_commands.gold_calculation(
+                        gold_calculation_result = await gold_calculation(
                             guild_id=guild_id,
                             level=starting_level,
                             author_name=interaction.user.name,
@@ -414,9 +424,9 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
                             gold_value_max_change=None,
                             reason="Character Registration",
                             source="Character Registration")
-                    if isinstance(gold_calculation, tuple):
+                    if isinstance(gold_calculation_result, tuple):
                         (gold_difference, gold_total, gold_value_total, gold_value_max_total,
-                         transaction_id) = gold_calculation
+                         transaction_id) = gold_calculation_result
                     await cursor.execute(
                         """INSERT INTO Player_Characters (Player_Name, Player_ID, True_Character_Name, Character_Name, 
                         Nickname, Titles, Description, Oath, Level, Tier, Milestones, Milestones_Required, Trials, Trials_Required, 
@@ -462,7 +472,7 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
                     if info_tmp_bio:
                         print(f"Creating article with {info_tmp_bio}")
                         try:
-                            article = await shared_functions.put_wa_article(
+                            article = await put_wa_article(
                                 guild_id=interaction.guild.id, template='Person',
                                 title=info_true_character_name,
                                 category=backstory_category,
@@ -489,8 +499,8 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
                             article_url, article_id, character_embed_info[3], character_log_message.id, thread.id,
                             info_character_name))
                     await db.commit()
-                    async with shared_functions.autocomplete_cache.lock:
-                        shared_functions.autocomplete_cache.cache.clear()
+                    async with autocomplete_cache.lock:
+                        autocomplete_cache.cache.clear()
                     approved_role = interaction.guild.get_role(approved_character_role)
                     level_role = interaction.guild.get_role(info_level_range_id)
                     try:
@@ -509,7 +519,7 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
     )
 
     @customize_group.command(name='tradition', description="Set a character's tradition.")
-    @app_commands.autocomplete(character_name=shared_functions.character_select_autocompletion)
+    @app_commands.autocomplete(character_name=character_select_autocompletion)
     async def apply_tradition(self, interaction: discord.Interaction, character_name: str,
                               tradition_name: str, link: str, essence_cost: int):
         """Administrative: set a character's tradition!"""
@@ -517,9 +527,9 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
         guild_id = interaction.guild_id
         content = ""
         guild = interaction.guild
-        shared_functions.extract_document_id(link)
+        extract_document_id(link)
         await interaction.response.defer(thinking=True, ephemeral=True)
-        if not shared_functions:
+        if not link: # Assuming extract_document_id returns None or empty if invalid, or that the check is for the link itself
             await interaction.followup.send("Invalid link provided!", ephemeral=True)
             return
 
@@ -537,19 +547,19 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
                     ephemeral=True)
             else:
                 (character_name, essence, logging_thread) = player_info
-                essence_calculation = character_commands.calculate_essence(
+                essence_calculation_result = calculate_essence(
                     character_name=character_name,
                     essence=essence,
                     essence_change=-abs(essence_cost),
                     accepted_date=None
                 )  # Calculate the new essence
-                if isinstance(essence_calculation, tuple):
-                    (essence_total, essence_change) = essence_calculation
+                if isinstance(essence_calculation_result, tuple):
+                    (essence_total, essence_change) = essence_calculation_result
                     await cursor.execute(
                         "UPDATE Player_Characters SET Essence = ?, Tradition_Name = ?, Tradition_Link = ? WHERE Character_Name = ?",
                         (essence_total, tradition_name, link, character_name))
                     await db.commit()
-                    log_character = shared_functions.CharacterChange(
+                    log_character = CharacterChange(
                         character_name=character_name,
                         author=author,
                         essence=essence_total,
@@ -558,16 +568,16 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
                         tradition_link=link,
                         source="Apply Tradition"
                     )
-                    log_embed = await shared_functions.log_embed(
+                    log_embed_result = await log_embed(
                         change=log_character,
                         guild=guild,
                         thread=logging_thread,
                         bot=self.bot
                     )
-                    await shared_functions.character_embed(character_name=character_name, guild=guild)
+                    await character_embed(character_name=character_name, guild=guild)
                     # Fetch channel ID
-                    async with shared_functions.config_cache.lock:
-                        configs = shared_functions.config_cache.cache.get(guild.id)
+                    async with config_cache.lock:
+                        configs = config_cache.cache.get(guild.id)
                         if configs:
                             channel_id = configs.get('Review_Channel')
                     if not channel_id:
@@ -584,14 +594,14 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
                             forge_channel_id=channel_id,
                             author=interaction.user
                         )
-                    await interaction.followup.send(content=content,embed=log_embed)
+                    await interaction.followup.send(content=content,embed=log_embed_result)
 
                 else:
-                    await interaction.followup.send(essence_calculation, ephemeral=True)
+                    await interaction.followup.send(essence_calculation_result, ephemeral=True)
                     return
 
     @customize_group.command(name='template', description="Set a character's template.")
-    @app_commands.autocomplete(character_name=shared_functions.character_select_autocompletion)
+    @app_commands.autocomplete(character_name=character_select_autocompletion)
     async def apply_template(self, interaction: discord.Interaction, character_name: str,
                              template_name: str, link: str, essence_cost: int):
         """Administrative: set a character's tradition!"""
@@ -599,9 +609,9 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
         guild_id = interaction.guild_id
         guild = interaction.guild
         content = ""
-        shared_functions.extract_document_id(link)
+        extract_document_id(link)
         await interaction.response.defer(thinking=True, ephemeral=True)
-        if not shared_functions:
+        if not link: # Assuming extract_document_id returns None or empty if invalid, or that the check is for the link itself
             await interaction.followup.send("Invalid link provided!", ephemeral=True)
             return
 
@@ -619,19 +629,19 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
                     ephemeral=True)
             else:
                 (character_name, essence, logging_thread) = player_info
-                essence_calculation = character_commands.calculate_essence(
+                essence_calculation_result = calculate_essence(
                     character_name=character_name,
                     essence=essence,
                     essence_change=-abs(essence_cost),
                     accepted_date=None
                 )  # Calculate the new essence
-                if isinstance(essence_calculation, tuple):
-                    (essence_total, essence_change) = essence_calculation
+                if isinstance(essence_calculation_result, tuple):
+                    (essence_total, essence_change) = essence_calculation_result
                     await cursor.execute(
                         "UPDATE Player_Characters SET Essence = ?, template_name = ?, template_Link = ? WHERE Character_Name = ?",
                         (essence_total, template_name, link, character_name))
                     await db.commit()
-                    log_character = shared_functions.CharacterChange(
+                    log_character = CharacterChange(
                         character_name=character_name,
                         author=author,
                         essence=essence_total,
@@ -640,16 +650,16 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
                         template_link=link,
                         source="Apply Tradition"
                     )
-                    log_embed = await shared_functions.log_embed(
+                    log_embed_result = await log_embed(
                         change=log_character,
                         guild=guild,
                         thread=logging_thread,
                         bot=self.bot
                     )
-                    await shared_functions.character_embed(character_name=character_name, guild=guild)
+                    await character_embed(character_name=character_name, guild=guild)
                     # Fetch channel ID
-                    async with shared_functions.config_cache.lock:
-                        configs = shared_functions.config_cache.cache.get(guild.id)
+                    async with config_cache.lock:
+                        configs = config_cache.cache.get(guild.id)
                         if configs:
                             channel_id = configs.get('Review_Channel')
                         if not channel_id:
@@ -666,13 +676,110 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
                                 forge_channel_id=channel_id,
                                 author=interaction.user
                             )
-                    await interaction.followup.send(content=content, embed=log_embed)
+                    await interaction.followup.send(content=content, embed=log_embed_result)
                 else:
-                    await interaction.followup.send(essence_calculation, ephemeral=True)
+                    await interaction.followup.send(essence_calculation_result, ephemeral=True)
                     return
 
+    ticket_group = discord.app_commands.Group(
+        name='ticket',
+        description='Commands related to tickets.',
+        parent=reviewer_group
+    )
 
-class CleanOldRegistrationView(shared_functions.SelfAcknowledgementView):
+    @ticket_group.command(name='claim', description='Claim a ticket.')
+    @app_commands.describe(ticket_id='The ID of the ticket to claim.')
+    async def claim_ticket(self, interaction: discord.Interaction, ticket_id: typing.Optional[int]):
+        """Claim a ticket."""
+        await interaction.response.defer(ephemeral=True)
+        try:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
+                cursor = await db.cursor()
+                if ticket_id:
+                    await cursor.execute("SELECT messageid, threadid, player_id, active FROM tickets_thread WHERE id = ?", (ticket_id,))
+                    ticket_message = await cursor.fetchone()
+                    if not ticket_message:
+                        await interaction.followup.send(f"{ticket_id} does not correlate to a known thread..", ephemeral=True)
+                        return
+                else:
+                    await cursor.execute("Select messageid, threadid, player_id, active from tickets_thread where threadid = ?",(interaction.channel_id,))
+                    ticket_message = await cursor.fetchone()
+                    if not ticket_message:
+                        await interaction.followup.send("You are not running this command in a known thread.", ephemeral=True)
+                        return
+                (message_messageid, threadid, player_id, active) = ticket_message
+                if player_id == interaction.user.id:
+                    await interaction.followup.send("Narcissus loves a man who loves himself, why are you claiming your own ticket?")
+                if active == 0:
+                    await interaction.followup.send("This ticket is closed. Please reopen it if you wish to make alterations.")
+                await db.execute("UPDATE tickets_thread SET claimed_by_id = ?, claimed_by_name = ? WHERE messageid = ?",(interaction.user.id, interaction.user.name, message_messageid))
+                await db.commit()
+                thread = interaction.guild.get_thread(threadid)
+                await claim_thread(
+                    thread=thread,
+                    claimer_name=interaction.user.name,
+                    claimer_id=interaction.user.id,
+                    guild_id=interaction.guild.id
+                    )
+
+                await interaction.followup.send(f"Ticket {ticket_id} claimed by {interaction.user.name}.", ephemeral=True)
+        except discord.NotFound:
+            await interaction.followup.send("Message not found.", ephemeral=True)
+        except Exception as e:
+            logging.exception(f"Error editing button: {e}")
+            await interaction.followup.send(f"Error editing button: {e}", ephemeral=True)
+
+    @ticket_group.command(name='close', description='Close a ticket.')
+    @app_commands.describe(ticket_id='The ID of the ticket to close.')
+    async def close_ticket(self, interaction: discord.Interaction, ticket_id: typing.Optional[int]):
+        """Close a ticket."""
+        await interaction.response.defer(ephemeral=True)
+        try:
+            async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
+                cursor = await db.cursor()
+                if ticket_id:
+                    await cursor.execute("SELECT id, active FROM tickets_thread WHERE id = ?", (ticket_id,))
+                    ticket_message = await cursor.fetchone()
+                    if not ticket_message:
+                        await interaction.followup.send(f"{ticket_id} does not correlate to a known ticket id.", ephemeral=True)
+                        return
+                else:
+                    await cursor.execute("SELECT id, active FROM tickets_thread WHERE threadid = ?", (interaction.channel_id,))
+                    ticket_message = await cursor.fetchone()
+                    if not ticket_message:
+                        await interaction.followup.send("You are not running this command in a known thread.", ephemeral=True)
+                        return
+                (ticket_id, active) = ticket_message
+                await db.execute("UPDATE tickets_thread SET closer_id = ?, closer_name = ? WHERE id = ?",(interaction.user.id, interaction.user.name, ticket_id))
+                await db.commit()
+                await silent_close_thread(
+                    guild=interaction.guild,
+                    ticketid=ticket_id
+                )
+                await interaction.followup.send(f"Ticket {ticket_id} closed by {interaction.user.name}.", ephemeral=True)
+        except discord.NotFound:
+            await interaction.followup.send("Message not found.", ephemeral=True)
+        except Exception as e:
+            logging.exception(f"Error editing button: {e}")
+            await interaction.followup.send(f"Error editing button: {e}", ephemeral=True)   
+
+
+
+    @ticket_group.command(name='thread_list', description='List active threads')
+    async def list_threads(self, interaction: discord.Interaction, page: int = 1):
+        """List all buttons."""
+        await interaction.response.defer(ephemeral=True)
+        try:
+            view = ThreadListView(user_id=interaction.user.id, guild_id=interaction.guild.id, offset=page, limit=10, interaction=interaction)
+            await view.create_embed()
+            await view.send_initial_message()
+        except Exception as e:
+            logging.exception(f"Error listing buttons: {e}")
+            await interaction.followup.send(f"Error listing buttons: {e}", ephemeral=True)
+
+
+
+class CleanOldRegistrationView(SelfAcknowledgementView):
     def __init__(self, guild_id: int, days: int, interaction: discord.Interaction):
         super().__init__(content="", interaction=self.interaction)
         self.interaction = interaction
