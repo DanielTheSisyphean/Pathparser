@@ -223,7 +223,7 @@ async def on_ready():
     await bot.add_cog(KingdomCommands(bot))
     await bot.add_cog(OverseerCommands(bot))
     await bot.tree.sync()
-    await start_global_scheduler()
+    await start_global_scheduler(bot)
     await reinstate_reminders(bot)
     await reinstate_session_buttons(bot)
     await reinstate_server_buttons(bot)
@@ -243,10 +243,10 @@ async def on_disconnect():
 
 @bot.event
 async def on_connect():
-    await start_global_scheduler()
+    await start_global_scheduler(bot)
 
 
-"""
+
 @bot.event
 async def on_message(message):
     if message.author.bot:
@@ -291,9 +291,10 @@ async def on_message(message):
     # Check if the guild is in the cache
     async with approved_channel_cache.lock:
         if guild_id in approved_channel_cache.cache:
+            print("got a lock on it")
             if channel_id in approved_channel_cache.cache[guild_id]:
                 multiplier = approved_channel_cache.cache[guild_id][channel_id]
-                await handle_rp_message(message, multiplier))
+                await handle_rp_message(message, multiplier)
                 if message.mentions and no_ping_role:
                     try:
                         no_ping_role_flake = message.guild.get_role(no_ping_role)
@@ -304,6 +305,7 @@ async def on_message(message):
                     except Exception:
                         pass
             else:
+                print("i'm in here, handling memes.")
                 logging.debug(f"Channel {channel_id} is not approved. Processing commands.")
                 await meme_handler(message)
                 await bot.process_commands(message)
@@ -312,14 +314,14 @@ async def on_message(message):
             logging.debug(f"Guild {guild_id} not in cache. Adding.")
             await add_guild_to_cache(guild_id)
             # Re-check after adding
-            if channel_id in approved_channel_cache.cache[guild_id]
+            if channel_id in approved_channel_cache.cache[guild_id]:
                 logging.debug(f"Channel {channel_id} is approved after cache update.")
                 await handle_rp_message(message)
             else:
                 logging.debug(f"Channel {channel_id} is still not approved. Processing commands.")
                 await meme_handler(message)
                 await bot.process_commands(message)
-"""
+
 
 @bot.event
 async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):

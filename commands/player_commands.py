@@ -468,8 +468,27 @@ class PlayerCommands(commands.Cog, name='Player'):
                                 quest_thread = await interaction.guild.fetch_channel(session_thread)
                             if not quest_thread:
                                 raise ValueError(f"Thread {session_thread} not found in guild {interaction.guild_id}")
-
-                            if overflow != 4:
+                            if overflow == 4:
+                                min_level = 0
+                                max_level = 999
+                                join_session = await player_signup(
+                                    guild=interaction.guild,
+                                    thread_id=session_thread,
+                                    session_name=session_name,
+                                    session_id=session_id,
+                                    player_id=interaction.user.id,
+                                    character_name=character_name,
+                                    warning_duration=warning_duration)
+                                if join_session:
+                                    await interaction.followup.send(
+                                        content="You have submitted your request! Please wait for the GM to accept or deny your request!",
+                                        ephemeral=True)
+                                else:
+                                    await interaction.followup.send(
+                                        f"Failed to sign up player {interaction.user.name} for session {session_name} ({session_id})",
+                                        ephemeral=True)
+                                return
+                            else:
                                 secondary_role = await gamemaster_commands.validate_milestone_system_overflow(
                                     guild=interaction.guild,
                                     overflow=overflow,
@@ -489,25 +508,7 @@ class PlayerCommands(commands.Cog, name='Player'):
                                     (min_level, max_level, role_name) = level_range_info
                                 else:
                                     (role_name, min_level, max_level) = secondary_role
-                            else:
-                                min_level = 0
-                                max_level = 999
-                                join_session = await player_signup(
-                                    guild=interaction.guild,
-                                    thread_id=session_thread,
-                                    session_name=session_name,
-                                    session_id=session_id,
-                                    player_id=interaction.user.id,
-                                    character_name=character_name,
-                                    warning_duration=warning_duration)
-                                if join_session:
-                                    await interaction.followup.send(
-                                        content="You have submitted your request! Please wait for the GM to accept or deny your request!",
-                                        ephemeral=True)
-                                else:
-                                    await interaction.followup.send(
-                                        f"Failed to sign up player {interaction.user.name} for session {session_name} ({session_id})",
-                                        ephemeral=True)
+
                             if not min_level or not max_level:
                                 role = interaction.guild.get_role(session_range_id)
                                 if not role:
@@ -515,7 +516,6 @@ class PlayerCommands(commands.Cog, name='Player'):
                                         f"Role {session_range_id} not found in guild {interaction.guild_id}")
                                     raise ValueError(f"Role {session_range_id} not found in guild {interaction.guild_id}")
                                 if role in interaction.user.roles:
-
                                     join_session = await player_signup(
                                         guild=interaction.guild,
                                         thread_id=session_thread,

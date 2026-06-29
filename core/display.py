@@ -32,7 +32,8 @@ async def character_embed(
                 SELECT player_name, player_id, True_Character_Name, Title, Titles, Description, Oath, Level,
                        Tier, Milestones, Milestones_Required, Trials, Trials_Required, Gold, Gold_Value,
                        Essence, Fame, Prestige, Color, Mythweavers, Image_Link, Tradition_Name,
-                       Tradition_Link, Template_Name, Template_Link, Article_Link, Message_ID, Region
+                       Tradition_Link, Template_Name, Template_Link, Article_Link, Message_ID, Region,
+                       heroism, hero_points, hero_points_max
                 FROM Player_Characters WHERE Character_Name = ?
                 """, (character_name,))
             character_info = await cursor.fetchone()
@@ -72,7 +73,9 @@ async def character_embed(
         template_link = character_info['Template_Link']
         article_link = character_info['Article_Link']
         message_id = character_info['Message_ID']
-
+        heroism = character_info['Heroism']
+        hero_points = character_info['Hero_points']
+        hero_points_max = character_info['Hero_points_max']
         # Convert color to integer
         try:
             int_color = int(color.lstrip('#'), 16)
@@ -98,9 +101,12 @@ async def character_embed(
         )
         embed.set_author(name=player_name)
         embed.set_thumbnail(url=image_link)
+        information_value = f'**Level**: {level}, **Mythic Tier**: {tier}\n**Fame**: {fame}, **Prestige**: {prestige}'
+        if heroism == 1:
+            information_value += f"\n**Hero Points**: {hero_points}\n"
         embed.add_field(
             name="Information",
-            value=f'**Level**: {level}, **Mythic Tier**: {tier}\n**Fame**: {fame}, **Prestige**: {prestige}',
+            value=information_value,
             inline=False
         )
         embed.add_field(
@@ -321,6 +327,11 @@ async def log_embed(change: CharacterChange, guild: discord.Guild, thread: int, 
             embed.add_field(
                 name="Region",
                 value=change.region
+            )
+
+        if change.hero_point_change is not None:
+            embed.add_field(
+                name=f"Hero Point Change",value=change.hero_point_change
             )
 
         # Set Footer

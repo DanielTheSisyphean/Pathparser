@@ -15,7 +15,7 @@ from matplotlib import pyplot as plt
 
 import commands.player_commands as player_commands
 from core.config import config_cache
-from core.utils import name_fix, validate_vtt, extract_document_id
+from core.utils import name_fix, validate_vtt, extract_document_id, safe_add
 from core.time_utils import complex_validate_hammertime, validate_hammertime, parse_hammer_time_to_iso
 from core.character import (
     CharacterChange, UpdateCharacterData, update_character,
@@ -298,7 +298,7 @@ async def session_reward_calculation(
             cursor = await conn.cursor()
 
             await cursor.execute(
-                "SELECT Player_ID, player_name, True_Character_Name, Oath, Level, Tier, Milestones, Trials, Gold, Gold_Value, Gold_Value_Max, Essence, Thread_ID, Accepted_Date, Fame, Prestige, Personal_Cap, Thread_ID, Region FROM Player_Characters WHERE Character_Name = ? OR Nickname = ? or True_Character_Name = ?",
+                "SELECT Player_ID, player_name, True_Character_Name, Oath, Level, Tier, Milestones, Trials, Gold, Gold_Value, Gold_Value_Max, Essence, Thread_ID, Accepted_Date, Fame, Prestige, Personal_Cap, Thread_ID, Region, heroism, hero_points, hero_points_max FROM Player_Characters WHERE Character_Name = ? OR Nickname = ? or True_Character_Name = ?",
                 (character_name, character_name, character_name))
             player_info = await cursor.fetchone()
 
@@ -308,7 +308,8 @@ async def session_reward_calculation(
             else:
                 (player_id, player_name, true_character_name, oath, character_level, character_tier, milestones, trials,
                  gold, gold_value, gold_value_max,
-                 essence, thread_id, accepted_date, fame, prestige, personal_cap, thread_id, region) = player_info
+                 essence, thread_id, accepted_date, fame, prestige, personal_cap, thread_id, region,
+                 heroism, hero_points, hero_points_max) = player_info
 
                 try:
                     return_level = await level_calculation(
@@ -456,6 +457,21 @@ async def session_reward_calculation(
                 else:
                     fame_change = None
                     prestige_change = None
+                if new_level > character_level:
+                    if heroism == 1:
+                        async with config_cache.lock:
+                            configs = config_cache.cache.get(interaction.guild_id)
+                            if configs:
+                                hero_points_level = configs.get('Hero_Points_Level')
+                                hero_points_session = configs.get('Hero_Points_Sessions')
+                        level_difference = new_level - character_level
+                        hero_points_differential = hero_points_level * level_difference + hero_points
+                        hero_points_differential = safe_add(hero_points_differential, hero_points_session)
+                        new_hero_points = min(hero_points_differential, hero_points_max)
+                        if new_hero_points != hero_points:
+                            character_updates.hero_package = (heroism, new_hero_points)
+                            character_changes.hero_points = new_hero_points - hero_points
+                            character_changes.heroism = heroism
                 await update_character(
                     guild_id=interaction.guild.id,
                     change=character_updates)
@@ -939,6 +955,13 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
         description='Commands related to handling rumors',
         parent=gamemaster_group
     )
+
+    character_group = discord.app_commands.Group(
+        name='character',
+        description='Commands related to handling characters',
+        parent=gamemaster_group
+    )
+
     @gamemaster_group.command(name='help', description='Help commands for the associated tree')
     async def help(self, interaction: discord.Interaction):
         """Help commands for the associated tree"""
@@ -986,6 +1009,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
             """, inline=False)
 
         await interaction.followup.send(embed=embed)
+
 
     @fame_group.command(name='requests', description='accept or reject a request that timeout after 24 hours!')
     @app_commands.choices(acceptance=[discord.app_commands.Choice(name='accept', value=1),
@@ -1114,6 +1138,64 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
             logging.exception(f"An error occurred whilst updating a character's fame & prestige: {e}")
             await interaction.followup.send_message(
                 f"An error occurred whilst managing a proposition. Please try again later.")
+
+
+    @character_group.command(name='heroism', description='Adjust a characters hero points or their maximum!')
+    @app_commands.autocomplete(character=character_select_autocompletion)
+    async def hero_points(self, interaction: discord.Interaction, character: str, hero_points: typing.Optional[int], hero_point_cap: typing.Optional[int], reason: typing.Optional[str]):
+        """Add or remove from a player's fame and prestige!"""
+        guild_id = interaction.guild_id
+        guild = interaction.guild
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        try:
+            async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
+                cursor = await db.cursor()
+                await cursor.execute("SELECT Thread_ID, Heroism, Hero_Points, Hero_Points_Max from Player_Characters where Character_Name = ?",
+                                     (character,))
+                player_info = await cursor.fetchone()
+                if player_info is not None:
+                    (thread_id, heroism, info_hero_points, hero_points_max) = player_info
+                    if heroism == 2:
+                        await interaction.followup.send_message("Fuck off, this character is an antihero.")
+                        return
+                    new_hero_points = safe_add(hero_points, info_hero_points)
+                    reason = "" if not reason else reason + "\r\n"
+                    if hero_point_cap and hero_point_cap != hero_points_max:
+                        hero_cap = hero_point_cap
+                        reason += f"Hero Point Maximum changed from {hero_points_max} to {hero_cap}\r\n"
+                        new_hero_points = min(new_hero_points, hero_cap)
+                    else:
+                        hero_cap = hero_points_max
+                    if new_hero_points != info_hero_points:
+                        new_hero_points = min(new_hero_points, hero_cap)
+                        change = new_hero_points - info_hero_points
+                        character_updates = UpdateCharacterData(
+                            character_name=character,
+                            hero_package=(heroism, new_hero_points))
+                        await update_character(guild_id=guild_id, change=character_updates)
+                        reason += f"Hero point change by {interaction.user.name}.\r\n" + reason if reason is not None else f"Hero Point change by {interaction.user.name}."
+
+
+                        character_changes = CharacterChange(
+                            character_name=character,
+                            author=interaction.user.name,
+                            heroism=heroism,
+                            hero_point_change=change)
+                        log_update = await log_embed(
+                            guild=guild,
+                            thread=thread_id,
+                            change=character_changes,
+                            bot=self.bot)
+                        await interaction.followup.send(embed=log_update)
+                    else:
+                        await interaction.followup.send("YOU ABSOLUTE MONKEY. WHAT DID YOU EVEN CHANGE?")
+                else:
+                    await interaction.followup.send_message(
+                        f"Character {character} does not exist! Could not complete transaction!")
+        except (aiosqlite, TypeError, ValueError) as e:
+            logging.exception(f"An error occurred whilst updating a character's hero points: {e}")
+            await interaction.followup.send_message(
+                f"An error occurred whilst updating a character's hero points. {e}")
 
     @session_group.command(name='create', description='Create a new session!')
     @app_commands.describe(hammer_time="Please use the plain code hammer time provides that appears like </>, ")
@@ -1405,12 +1487,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                                 build_info_base.session_range += f" and {evaluated_region_range[0].mention}"
                         elif build_info_base.overflow == 4:
                             build_info_base.session_range += "\r\n Any level can join."
-                # if game_link: # This validation is now at the top
-                #     game_link_valid = shared_functions.validate_vtt(game_link)
-                #     if not game_link_valid[0]:
-                #         await interaction.followup.send(
-                #             f"Please provide a valid VTT link. You submitted {game_link} \r\n {game_link_valid[1]}")
-                #         return
+
                 time = None
                 if build_info_base.hammer_time: # Only validate if hammer_time exists
                     hammer_time_valid = validate_hammertime(build_info_base.hammer_time)
@@ -1864,7 +1941,6 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                     (session_id,))
                 session_info = await cursor.fetchone()
                 if session_info is not None:
-                    print("I got hooked for the session")
                     (gm_name, session_name, session_range, play_location, hammer_time, message, session_thread,
                      is_active, plot) = session_info
                     if is_active == 1:
@@ -1886,6 +1962,15 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                             rewarded_session_thread=None
                         )
                         mentions = f"Session Rewards for {session_name}: "
+                        rewards_list = ""
+                        rewards_list += f"easy jobs: {easy}\r\n" if easy else ""
+                        rewards_list += f"medium jobs: {medium}\r\n" if medium else ""
+                        rewards_list += f"hard jobs: {hard}\r\n" if hard else ""
+                        rewards_list += f"deadly jobs: {deadly}\r\n" if deadly else ""
+                        rewards_list += f"trials: {trials}\r\n" if trials else ""
+                        rewards_list += f"gold: {gold}\r\n" if gold else ""
+                        rewards_list += f"fame: {fame}\r\n" if fame else ""
+                        rewards_list += f"prestige: {prestige}\r\n" if prestige else ""
                         await cursor.execute(
                             "SELECT Player_Name, Player_ID, Character_Name, Level, Tier, Effective_Wealth  FROM Sessions_Participants WHERE Session_ID = ?",
                             (session_id,))
@@ -1912,14 +1997,21 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                                 (world_anvil_link, world_anvil_id) = world_anvil
                                 embed = discord.Embed(title=session_name, description=f"Reward Display",
                                                       color=discord.Colour.green(), url=world_anvil_link['url'])
+                                simple_embed = discord.Embed(title=session_name, description=f"Reward Display",
+                                                             color=discord.Colour.green(), url=world_anvil_link['url'])
                             else:
                                 embed = discord.Embed(title=session_name, description=f"Reward Display",
                                                       color=discord.Colour.green())
+                                simple_embed = discord.Embed(title=session_name, description=f"Reward Display",
+                                                             color=discord.Colour.green())
                             embed.set_footer(text=f"Session ID is {session_id}")
-                            print("I handling players")
+                            simple_embed.set_footer(text=f"Session ID is {session_id}")
+                            player_list = ""
+                            player_dict = {}
                             for player in session_players:
                                 (player_name, player_id, character_name, level, tier, effective_wealth) = player
                                 mentions += f"<@{player[1]}> "
+                                player_list += f"<@{player[1]}>: {character_name} \r\n"
                                 print(player_name)
                                 session_reward = await session_reward_calculation(
                                     interaction=interaction,
@@ -1952,6 +2044,8 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                                     changes += f"\r\n{session_reward_embed.milestones_total} Milestones" if session_reward_embed.milestones_total else ""
                                     changes += f", {session_reward_embed.trials} Trials" if session_reward_embed.trial_change else ""
                                     embed.add_field(name=character_name, value=changes)
+                                    player_embed = discord.Embed(title=f"{character_name}'s rewards", description=f"{changes}", color=discord.Color.green())
+                                    player_dict[player_id] = player_embed
                                     await log_embed(
                                         change=session_reward_embed,
                                         guild=interaction.guild,
@@ -1979,8 +2073,12 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                                     "Issue with the Quest Rewards Channel set by your Server Admin!!!! Please contact them to fix this issue. Quest Rewards Channel Not Found in the DB!")
                                 return
                             else:
+                                simple_embed.add_field(name="Participants",value=player_list)
+                                simple_embed.add_field(name="Rewards",value=rewards_list)
+                                player_dict[interaction.user.id] = embed
+                                view = PersonalEmbedView(user_embeds=player_dict)
 
-                                quest_message = await quest_rewards_channel.send(content=mentions, embed=embed,
+                                quest_message = await quest_rewards_channel.send(content=mentions, embed=simple_embed, view=view,
                                                                                  allowed_mentions=discord.AllowedMentions(
                                                                                      users=True))
                                 if party_reward:
@@ -2001,7 +2099,8 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
 
                                 await db.commit()
                                 await interaction.followup.send(
-                                    f"Rewards have been sent to the players! Check the Quest Rewards Channel with {quest_message.jump_url} for more information!",
+                                    f"Rewards have been sent to the players! Check the Quest Rewards Channel with {quest_message.jump_url} for the post!",
+                                    embed=embed,
                                     ephemeral=True)
         except (aiosqlite.Error, TypeError, ValueError) as e:
             logging.exception(f"An error occurred whilst rewarding players for a session: {e}")
@@ -2561,7 +2660,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                 f"An error occurred whilst fetching data. Please try again later.",
                 ephemeral=True)
 
-    @rumor_group.command(name="Delete", description="Delete a rumor!")
+    @rumor_group.command(name="delete", description="Delete a rumor!")
     async def delete_rumor(
             self,
             interaction: discord.Interaction,
@@ -2595,8 +2694,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                 ephemeral=True)
 
     @rumor_group.command(name='display', description='Display rumors!')
-    async def display_rumor(self, interaction: discord.Interaction, session_id: int,
-                            kingdom: typing.Optional[str], settlement: typing.Optional[str],
+    async def display_rumor(self, interaction: discord.Interaction, kingdom: typing.Optional[str], settlement: typing.Optional[str],
                       group: discord.app_commands.Choice[int] = 1, page_number: int = 1
                             ):
         """ALL: THIS COMMAND DISPLAYS SESSION INFORMATION"""
@@ -2626,14 +2724,13 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                         await interaction.followup.send(f"There are no rumors for settlement of {settlement}")
                         return
                 else:
-                    await cursor.exexcute("Select Count(*) from rumors")
+                    await cursor.execute("Select Count(*) from rumors")
                     rumor_info = await cursor.fetchone()
                     count = int(rumor_info[0])
                     if count == 0:
                         await interaction.followup.send("This list of rumors so lonely there are none of them.")
                         return
-                cursor = await conn.execute("SELECT COUNT(*) FROM Sessions_Signups WHERE Session_ID = ?",
-                                                (session_id,))
+
                 # Set up pagination variables
                 page_number = min(max(page_number, 1), math.ceil(count / 10))
                 items_per_page = 10
@@ -2986,8 +3083,11 @@ class JoinOrLeaveSessionView(discord.ui.View):
                     (session_range_id, overflow, self.thread_id) = session_info
                     # Fetch the user's characters suitable for the session
                     if overflow == 4:  # All Characters Suitable as Overflow is 4
+                        print("all characters were suitable" )
                         await cursor.execute("SELECT Character_Name FROM Player_Characters WHERE Player_ID = ?",
                                              (interaction.user.id,))
+                        character_names = await cursor.fetchall()
+                        return [character_name[0] for character_name in character_names]
                     else:  # Fetch characters based on the session range
                         await cursor.execute(
                             "Select Min(Level), Max(Level) from Milestone_System where Level_Range_ID = ?",
@@ -3459,6 +3559,36 @@ class DisplayTimeGroupView(discord.ui.View):
                 self.max_range_id = count[0]
         return self.max_range_id
 
+
+class PersonalEmbedView(discord.ui.View):
+    def __init__(self, user_embeds: dict[int, discord.Embed]):
+        super().__init__(timeout=None)
+        self.user_embeds = user_embeds
+
+    @discord.ui.button(
+        label="See details",
+        style=discord.ButtonStyle.primary
+    )
+    async def view_report(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        user_id = interaction.user.id
+
+        if user_id not in self.user_embeds:
+            await interaction.response.send_message(
+                "You do not have a report available.",
+                ephemeral=True
+            )
+            return
+
+        embed = self.user_embeds[user_id]
+
+        await interaction.response.send_message(
+            embed=embed,
+            ephemeral=True
+        )
 
 logging.basicConfig(
     level=logging.INFO,  # Set the minimum logging level

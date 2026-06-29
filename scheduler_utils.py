@@ -19,7 +19,7 @@ scheduled_jobs = {}
 # --- Your other bot setup code follows ---
 
 # This MUST be called from within an async function where the event loop is running
-async def start_global_scheduler():
+async def start_global_scheduler(bot: discord.Client = None):
     """Starts the global scheduler if it's not already running."""
     if not scheduler.running:
         try:
@@ -35,6 +35,25 @@ async def start_global_scheduler():
     else:
         print(f"Scheduler is already running. Running: {scheduler.running}")
         logging.info(f"Scheduler is already running. Running: {scheduler.running}")
+
+    if bot is not None:
+        try:
+            local_tz = datetime.now().astimezone().tzinfo
+            scheduler.add_job(
+                run_daily_weather_task,
+                'cron',
+                hour=0,
+                minute=0,
+                timezone=local_tz,
+                args=[bot],
+                id='daily_weather_job',
+                replace_existing=True
+            )
+            print("Daily weather job scheduled successfully at midnight local time.")
+            logging.info("Daily weather job scheduled successfully at midnight local time.")
+        except Exception as e:
+            logging.exception(f"Failed to schedule daily weather job: {e}")
+            print(f"Failed to schedule daily weather job: {e}")
 
 
 # --- Function to SHUT DOWN the scheduler ---
@@ -229,3 +248,134 @@ def parse_hammer_time(hammer_time_str: str) -> datetime:
         logging.error(f"Error parsing hammer_time '{hammer_time_str}': {e}")
         # Decide error handling: raise, return None, return default?
         raise ValueError(f"Invalid hammer_time format: {hammer_time_str}") from e
+
+
+async def run_daily_weather_task(bot: discord.Client) -> None:
+    """Automated daily task to update weather for all settlements and log it."""
+    from core.Weather import generate_weather
+    from core.kingdom_logging import settlement_embed
+    from core.config import config_cache
+
+    logging.info("Starting daily weather task...")
+    print("Starting daily weather task...")
+
+    for guild in bot.guilds:
+        try:
+            # 1. Fetch Weather_Log channel ID from cache
+            weather_log_channel_id = config_cache.get(guild.id, 'Weather_Log')
+            
+            # Find the channel
+            weather_log_channel = None
+            if weather_log_channel_id:
+                try:
+                    weather_log_channel = bot.get_channel(int(weather_log_channel_id))
+                    if not weather_log_channel:
+                        weather_log_channel = await bot.fetch_channel(int(weather_log_channel_id))
+                except Exception as ex:
+                    logging.warning(f"Could not find or fetch Weather_Log channel {weather_log_channel_id} in guild {guild.name}: {ex}")
+
+            # 2. Connect to the guild database
+            db_path = f"pathparser_{guild.id}.sqlite"
+            async with aiosqlite.connect(db_path) as db:
+                db.row_factory = aiosqlite.Row
+                cursor = await db.cursor()
+
+                # Fetch all settlements
+                await cursor.execute("SELECT Settlement, Latitude, Longitude FROM KB_Settlements")
+                settlements = await cursor.fetchall()
+
+                weather_reports = []
+
+                for row in settlements:
+                    settlement_name = row["Settlement"]
+                    latitude = row["Latitude"]
+                    longitude = row["Longitude"]
+
+                    # Run generate_weather if coordinates are present
+                    if latitude is not None and longitude is not None:
+                        try:
+                            logging.info(f"Generating weather for settlement {settlement_name} (Lat: {latitude}, Lon: {longitude}) in guild {guild.name}...")
+                            await generate_weather(db, settlement_name, float(latitude), float(longitude))
+                        except Exception as e:
+                            logging.exception(f"Error generating weather for settlement {settlement_name} in guild {guild.name}: {e}")
+                    else:
+                        logging.info(f"Skipping weather generation for settlement {settlement_name} in guild {guild.name} (no coordinates).")
+
+                    # Run settlement_embed
+                    try:
+                        logging.info(f"Executing settlement_embed for settlement {settlement_name} in guild {guild.name}...")
+                        await settlement_embed(settlement_name, guild)
+                    except Exception as e:
+                        logging.exception(f"Error executing settlement_embed for settlement {settlement_name} in guild {guild.name}: {e}")
+
+                    # Fetch today's weather info for the log/summary if coordinates were present
+                    if latitude is not None and longitude is not None:
+                        try:
+                            today_str = datetime.now().strftime("%Y-%m-%d")
+                            await cursor.execute("""
+                                SELECT 
+                                    Temp_High, 
+                                    Temp_Low, 
+                                    Wind_Speed, 
+                                    Precipitation_probability, 
+                                    Cloud_cover, 
+                                    humidity, 
+                                    WMO_Code,
+                                    Coalesce(WSet.Result, WAll.result) as WMO_Result
+                                FROM Weather_History WH
+                                LEFT JOIN Weather_WMO WSet on WSet.Code = WH.WMO_Code and WH.Settlement = ?
+                                LEFT JOIN Weather_WMO WAll on WAll.Code = WH.WMO_Code and WH.Settlement = 'All' 
+                                WHERE WH.Settlement = ? AND Date = ?
+                            """, (settlement_name, settlement_name, today_str))
+
+                            weather_info = await cursor.fetchone()
+                            if weather_info:
+                                weather_reports.append({
+                                    "settlement": settlement_name,
+                                    "temp_high": weather_info["Temp_High"],
+                                    "temp_low": weather_info["Temp_Low"],
+                                    "wind_speed": weather_info["Wind_Speed"],
+                                    "precip_probability": weather_info["Precipitation_probability"],
+                                    "cloud_cover": weather_info["Cloud_cover"],
+                                    "humidity": weather_info["humidity"],
+                                    "result": weather_info["WMO_Result"] or "Normal weather"
+                                })
+                        except Exception as e:
+                            logging.exception(f"Error retrieving today's weather from DB for {settlement_name} in guild {guild.name}: {e}")
+
+                # 3. Post summary if channel is configured and we have reports
+                if weather_log_channel and weather_reports:
+                    try:
+                        today_formatted = datetime.now().strftime('%A, %B %d, %Y')
+                        embed = discord.Embed(
+                            title=f"Daily Weather Report - {today_formatted}",
+                            color=discord.Color.blue(),
+                            description="Here is the weather forecast for today across the settlements:"
+                        )
+
+                        for report in weather_reports:
+                            wmo_desc = report["result"]
+                            weather_details = (
+                                f":sun_with_face: **High:** {report['temp_high']}°F  |  :snowflake: **Low:** {report['temp_low']}°F\n"
+                                f":leaves: **Wind:** {report['wind_speed']} MPH  |  :droplet: **Humidity:** {report['humidity']}%\n"
+                                f":cloud: **Cloud Cover:** {report['cloud_cover']}%  |  :cloud_rain: **Precipitation:** {report['precip_probability']}%"
+                            )
+                            embed.add_field(
+                                name=f"__**{report['settlement']}**__ — *{wmo_desc}*",
+                                value=weather_details,
+                                inline=False
+                            )
+
+                        embed.set_footer(text="Pathparser Weather Service")
+                        await weather_log_channel.send(embed=embed)
+                        logging.info(f"Posted weather summary for guild {guild.name} in channel {weather_log_channel.name}")
+                    except Exception as e:
+                        logging.exception(f"Error posting daily weather summary to {weather_log_channel_id} in guild {guild.name}: {e}")
+                else:
+                    if not weather_log_channel:
+                        logging.warning(f"Could not post weather summary for guild {guild.name} (Weather_Log channel not configured or not found).")
+                    if not weather_reports:
+                        logging.warning(f"Could not post weather summary for guild {guild.name} (no weather reports collected).")
+
+        except Exception as e:
+            logging.exception(f"Unexpected error in daily weather task for guild {guild.name}: {e}")

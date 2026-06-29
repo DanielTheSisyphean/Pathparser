@@ -8,7 +8,7 @@ from itertools import chain
 
 import aiosqlite
 import discord
-from discord import app_commands
+from discord import app_commands, role
 from discord.ext import commands
 
 from commands import kingdom_commands
@@ -23,6 +23,7 @@ from core.kingdom import (distribute_pain, distribute_consumption, allocate_food
                           )
 from core.kingdom_actions import (remove_building)
 from core.kingdom_fetching import fetch_kingdom, fetch_settlement_base, fetch_resources
+from core.kingdom_logging import settlement_embed
 from core.utils import compare_new, compare_choice
 
 kingdom_general_list = [
@@ -1674,48 +1675,48 @@ class OverseerCommands(commands.Cog, name='overseer'):
                 region = region if region else hex_info[1]
                 terrain = terrain if terrain else hex_info[2]
 
-            behavior_value = behavior.value if isinstance(behavior, discord.app_commands.Choice) else 1
-            if behavior_value == 2:
-                if farm:
-                    farm = random.randint(1, farm) if farm > 0 else farm
+                behavior_value = behavior.value if isinstance(behavior, discord.app_commands.Choice) else 1
+                if behavior_value == 2:
+                    if farm:
+                        farm = random.randint(1, farm) if farm > 0 else farm
+                    else:
+                        farm = hex_info[3]
+                    if ore:
+                        ore = random.randint(1, ore) if ore > 0 else ore
+                    else:
+                        ore = hex_info[4]
+                    if stone:
+                        stone = random.randint(1, stone) if stone > 0 else stone
+                    else:
+                        stone = hex_info[5]
+                    if wood:
+                        wood = random.randint(1, wood) if wood > 0 else wood
+                    else:
+                        wood = hex_info[6]
+                    if fish:
+                        fish = random.randint(1, fish) if fish > 0 else fish
+                    else:
+                        fish = hex_info[7]
                 else:
-                    farm = hex_info[3]
-                if ore:
-                    ore = random.randint(1, ore) if ore > 0 else ore
+                    farm = farm if farm else hex_info[3]
+                    ore = ore if ore else hex_info[4]
+                    stone = stone if stone else hex_info[5]
+                    wood = wood if wood else hex_info[6]
+                    fish = fish if fish else hex_info[7]
+                await cursor.execute(
+                    "UPDATE KB_Hexes SET Kingdom = ?, Hex_Terrain = ?, Region = ?, Farm = ?, Ore = ?, Stone = ?, wood = ?, fish = ? WHERE ID = ?",
+                    (change_kingdom, terrain, region, farm, ore, stone, wood, fish, hex_id))
+                await cursor.execute("UPDATE KB_Hexes_Constructed SET Kingdom = ? WHERE ID = ?", (change_kingdom, hex_id))
+                if kingdom != hex_info[0]:
+                    if kingdom:
+                        status = f"The hex with ID {hex_id} has been updated and added to the kingdom of {kingdom}!\r\nit can support {farm} farms, {ore} mines, {stone} quarries, {wood} woodcutters,and {fish} fisheries."
+                    else:
+                        status = f"The hex with ID {hex_id} has been updated and removed from the original kingdom!\r\nit can support {farm} farms, {ore} mines, {stone} quarries, {wood} woodcutters, and {fish} fisheries."
                 else:
-                    ore = hex_info[4]
-                if stone:
-                    stone = random.randint(1, stone) if stone > 0 else stone
-                else:
-                    stone = hex_info[5]
-                if wood:
-                    wood = random.randint(1, wood) if wood > 0 else wood
-                else:
-                    wood = hex_info[6]
-                if fish:
-                    fish = random.randint(1, fish) if fish > 0 else fish
-                else:
-                    fish = hex_info[7]
-            else:
-                farm = farm if farm else hex_info[3]
-                ore = ore if ore else hex_info[4]
-                stone = stone if stone else hex_info[5]
-                wood = wood if wood else hex_info[6]
-                fish = fish if fish else hex_info[7]
-            await cursor.execute(
-                "UPDATE KB_Hexes SET Kingdom = ?, Terrain = ?, Region = ?, Farm = ?, Ore = ?, Stone = ?, wood = ?, fish = ? WHERE ID = ?",
-                (change_kingdom, terrain, region, farm, ore, stone, wood, fish, hex_id))
-            await cursor.execute("UPDATE KB_Hexes_Constructed SET Kingdom = ? WHERE ID = ?", (change_kingdom, hex_id))
-            if kingdom != hex_info[0]:
-                if kingdom:
-                    status = f"The hex with ID {hex_id} has been updated and added to the kingdom of {kingdom}!\r\nit can support {farm} farms, {ore} mines, {stone} quarries, {wood} woodcutters,and {fish} fisheries."
-                else:
-                    status = f"The hex with ID {hex_id} has been updated and removed from the original kingdom!\r\nit can support {farm} farms, {ore} mines, {stone} quarries, {wood} woodcutters, and {fish} fisheries."
-            else:
-                status = f"The hex with ID {hex_id}has been updated!\r\nit can support {farm} farms, {ore} mines, {stone} quarries, {wood} woodcutters, and {fish} fisheries."
-            await db.commit()
+                    status = f"The hex with ID {hex_id}has been updated!\r\nit can support {farm} farms, {ore} mines, {stone} quarries, {wood} woodcutters, and {fish} fisheries."
+                await db.commit()
 
-            await interaction.followup.send(status)
+                await interaction.followup.send(status)
         except(TypeError, ValueError) as e:
             logging.exception(f"Error in add_hex: {e}")
             await interaction.followup.send("An error occurred while adding a hex.")
@@ -1873,8 +1874,7 @@ class OverseerCommands(commands.Cog, name='overseer'):
         try:
             async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as db:
                 cursor = await db.cursor()
-                await cursor.execute("SELECT Password, Size FROM kb_Kingdoms WHERE Kingdom = ?", (kingdom,))
-                kingdom_results = await cursor.fetchone()
+                kingdom_info = await fetch_kingdom(kingdom=kingdom, guild_id=interaction.guild_id, turn_id=None)
 
                 await cursor.execute(
                     "SELECT Ability, Economy, Loyalty, Stability FROM AA_Leadership_Roles WHERE Title = ?",
@@ -1886,16 +1886,26 @@ class OverseerCommands(commands.Cog, name='overseer'):
                     discord.SelectOption(label=ability) for ability in abilities
                 ]
 
-                additional = 1 if title != "Ruler" and kingdom_results[1] < 26 else 2
-                additional = 3 if title == "Ruler" and kingdom_results[1] < 101 else additional
-                view = kingdom_commands.LeadershipView(
-                    options, interaction.guild_id, interaction.user.id, kingdom, title, character_name,
-                    additional, economy, loyalty, stability, kingdom_results[1], modifier=modifier,
-                    recipient_id=interaction.user.id)
+                additional = 1 if title != "Ruler" and kingdom_info.size.total < 26 else 2
+                additional = 3 if title == "Ruler" and kingdom_info.size.total < 101 else additional
+                kingdom_commands.LeadershipView(
+                    options=options,
+                    additional=additional,
+                    guild_id=interaction.guild_id,
+                    user_id=interaction.user.id,
+                    kingdom=kingdom,
+                    role=title,
+                    character_name=character_name,
+                    economy=economy,
+                    loyalty=loyalty,
+                    stability=stability,
+                    hexes=kingdom_info.size.total,
+                    modifier=modifier,
+                    recipient_id=interaction.user.id,
+                    content='',
+                    interaction=interaction,
+                    )
 
-                await interaction.followup.send("Please select an attribute:", view=view)
-            # Store the message object
-            view.message = await interaction.original_response()
         except (aiosqlite.Error, TypeError, ValueError) as e:
             logging.exception(f"Error modifying  Leadership: {e}")
             await interaction.followup.send(content="An error occurred while modifying  Leadership.")
@@ -2500,6 +2510,11 @@ class OverseerCommands(commands.Cog, name='overseer'):
                     settlement=settlement,
                     latitude=latitude,
                     longitude=longitude
+                )
+
+                await settlement_embed(
+                    settlement=settlement,
+                    guild=interaction.guild
                 )
 
                 await interaction.followup.send(result)

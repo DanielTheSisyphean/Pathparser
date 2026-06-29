@@ -234,12 +234,12 @@ async def settlement_autocomplete(interaction: discord.Interaction, current: str
         cursor = await db.cursor()
         current = unidecode(str.title(current))
         await cursor.execute(
-            "SELECT Settlement from KB_Settlements WHERE Settlement LIKE ? Limit 20",
+            "SELECT Settlement, Kingdom from KB_Settlements WHERE Settlement LIKE ? Limit 20",
             (f"%{current}%",))
         settlement_list = await cursor.fetchall()
         for settlement in settlement_list:
             if current in settlement[0]:
-                data.append(app_commands.Choice(name=settlement[0], value=settlement[0]))
+                data.append(app_commands.Choice(name=f"{settlement[1]} - {settlement[0]}", value=settlement[0]))
     return data
 
 
@@ -613,5 +613,68 @@ async def stg_character_select_autocompletion(
                 data.append(app_commands.Choice(name=characters[0], value=characters[0]))
 
         return data
+
+
+async def response_trigger_autocomplete(
+        interaction: discord.Interaction,
+        current: str) -> typing.List[app_commands.Choice[str]]:
+    """Autocomplete for Response_Trigger entries, returning TriggerID as the value."""
+    data = []
+    guild_id = interaction.guild_id
+    current_lower = current.lower()
+    try:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
+            cursor = await db.execute(
+                "SELECT TriggerID, Trigger, MatchType FROM Response_Trigger "
+                "WHERE Trigger LIKE ? OR CAST(TriggerID AS TEXT) LIKE ? LIMIT 25",
+                (f"%{current_lower}%", f"%{current_lower}%")
+            )
+            rows = await cursor.fetchall()
+            for row in rows:
+                trigger_id, trigger, match_type = row
+                label = f"[{trigger_id}] {trigger} ({match_type})"
+                data.append(app_commands.Choice(name=label[:100], value=str(trigger_id)))
+    except (aiosqlite.Error, TypeError, ValueError) as e:
+        logging.exception(f"Error in response_trigger_autocomplete: {e}")
+    return data
+
+
+async def response_followup_autocomplete(
+        interaction: discord.Interaction,
+        current: str) -> typing.List[app_commands.Choice[str]]:
+    """Autocomplete for Response_Followup button names, scoped to the trigger_id in the interaction namespace."""
+    data = []
+    guild_id = interaction.guild_id
+    current_lower = current.lower()
+    # Try to read trigger_id from already-filled options
+    trigger_id = None
+    try:
+        namespace = interaction.namespace
+        trigger_id_raw = getattr(namespace, 'trigger_id', None)
+        if trigger_id_raw is not None:
+            trigger_id = int(trigger_id_raw)
+    except (ValueError, AttributeError):
+        trigger_id = None
+    try:
+        async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
+            if trigger_id is not None:
+                cursor = await db.execute(
+                    "SELECT rowid, buttonname FROM Response_Followup "
+                    "WHERE TriggerID = ? AND buttonname LIKE ? LIMIT 25",
+                    (trigger_id, f"%{current_lower}%")
+                )
+            else:
+                cursor = await db.execute(
+                    "SELECT rowid, buttonname FROM Response_Followup "
+                    "WHERE buttonname LIKE ? LIMIT 25",
+                    (f"%{current_lower}%",)
+                )
+            rows = await cursor.fetchall()
+            for row in rows:
+                rowid, button_name = row
+                data.append(app_commands.Choice(name=button_name[:100], value=button_name))
+    except (aiosqlite.Error, TypeError, ValueError) as e:
+        logging.exception(f"Error in response_followup_autocomplete: {e}")
+    return data
 
 

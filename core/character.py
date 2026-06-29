@@ -49,7 +49,8 @@ class CharacterChange:
     prestige_change: Optional[int] = None
     source: Optional[str] = None
     region: Optional[str] = None
-
+    heroism: Optional[int] = None
+    hero_point_change: Optional[int] = None
 
 @dataclass
 class UpdateCharacterData:
@@ -59,6 +60,7 @@ class UpdateCharacterData:
     gold_package: Optional[Tuple[Decimal, Decimal, Decimal]] = None  # (Gold, Gold_Value, Gold_Value_Max)
     essence: Optional[int] = None
     fame_package: Optional[Tuple[int, int]] = None  # (Fame, Prestige)
+    hero_package: Optional[Tuple[int, int]] = None #Heroism, Hero
 
 
 async def update_character(guild_id: int, change: UpdateCharacterData) -> tuple[bool, str]:
@@ -95,6 +97,9 @@ async def update_character(guild_id: int, change: UpdateCharacterData) -> tuple[
             assignments.extend(["Fame = ?", "Prestige = ?"])
             values.extend(change.fame_package)
 
+        if change.hero_package:
+            assignments.extend(["Hero_points = ?"])
+            values.append(change.hero_package[1])
         # Check if there are any assignments to update
         if not assignments:
             return False, "No changes to update."
@@ -139,6 +144,13 @@ async def get_max_level(guild_id: int) -> Optional[int]:
             else:
                 logging.error(f"Level cap not found for guild {guild_id}")
                 return None
+
+async def calculate_heroism(hero_status: int, current_points: int, max_points: int, change_points: int) -> Optional[int]:
+    if hero_status == 1:
+        hero_points = min(current_points + change_points, max_points)
+        return hero_points
+    else:
+        return current_points
 
 
 def calculate_milestones(
@@ -331,6 +343,7 @@ async def level_calculation(
             # If level_ranges is required and guild and author_id are provided
             if guild and author_id and new_level != level:
                 await level_ranges(cursor, guild, author_id, level, new_level, region, character_name)
+
 
             return (
                 new_level,

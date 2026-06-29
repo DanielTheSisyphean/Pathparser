@@ -25,19 +25,23 @@ class AttributeSelect(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
+        view = self.view
         try:
             await interaction.response.defer()
-            self.view.attribute = self.values[0]
-            # Remove the attribute select from the view
-            self.view.clear_items()
-            # Proceed to modifier selection
-            await self.view.proceed_to_modifier_selection()
+            if view:
+                view.attribute = self.values[0]
+                # Remove the attribute select from the view
+                view.clear_items()
+                # Proceed to modifier selection
+                await view.proceed_to_modifier_selection()
+
         except Exception as e:
             logging.exception(f"Error in AttributeSelect callback: {e}")
             await interaction.followup.send(
                 "An error occurred while selecting the attribute.", ephemeral=True
             )
-            self.view.stop()
+            if view:
+                view.stop()
 
 
 class LeadershipModifier(discord.ui.Select):
@@ -48,23 +52,26 @@ class LeadershipModifier(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
+        view = self.view
         try:
             await interaction.response.defer()
-            selected_modifier = self.values[0]
-            modifier_value = getattr(self.view, selected_modifier.lower())
-            # Update the modified value
-            setattr(self.view, f'{selected_modifier.lower()}_modified', modifier_value)
-            self.view.modifier_selection_count += 1
-            # Remove previous modifier select
-            self.view.clear_items()
-            # Proceed to the next modifier selection
-            await self.view.proceed_to_modifier_selection()
+            if view:
+                selected_modifier = self.values[0]
+                modifier_value = getattr(view, selected_modifier.lower())
+                # Update the modified value
+                setattr(view, f'{selected_modifier.lower()}_modified', modifier_value)
+                view.modifier_selection_count += 1
+                # Remove previous modifier select
+                view.clear_items()
+                # Proceed to the next modifier selection
+                await view.proceed_to_modifier_selection()
         except Exception as e:
             logging.exception(f"Error in  LeadershipModifier callback: {e}")
             await interaction.followup.send(
                 "An error occurred while selecting the modifier.", ephemeral=True
             )
-            self.view.stop()
+            if view:
+                view.stop()
 
 
 class LeadershipView(discord.ui.View):
@@ -1157,7 +1164,7 @@ class KingdomView(NewDualView):
                     :sparkles: Magical Items Produced: {luxury_crafts_dataclass.magical_items.base}, Incoming: {luxury_crafts_dataclass.magical_items.trade}, Leftover: {luxury_crafts_dataclass.magical_items.remaining}, Outgoing: {outgoing_trade.magical_items}
                     """
                     if penalty_dict['loyalty']:
-                        complex_goods_value += f'\r\n:warning: Overdraft - :harp: Luxury Items: {luxury_crafts_dataclass.luxury.depletion}, :sparkles: Magical Items: {luxury_crafts_dataclass.magical_items.depletion}' if luxury_crafts_dataclass.magical_items.depletion > 0 or luxury_crafts_dataclass.luxury.depletion > 0 else f'\r\nGeneral Depletion: {penalty_dict['loyalty']}'
+                        complex_goods_value += f'\r\n:warning: Overdraft - :harp: Luxury Items: {luxury_crafts_dataclass.luxury.depletion}, :sparkles: Magical Items: {luxury_crafts_dataclass.magical_items.depletion}' if luxury_crafts_dataclass.magical_items.depletion > 0 or luxury_crafts_dataclass.luxury.depletion > 0 else f"\r\nGeneral Depletion: {penalty_dict['loyalty']}"
 
                     resource_embed = discord.Embed(title=f"Resource breakdown for {self.kingdom}")
                     resource_embed.add_field(name="**Food**",value=food_value, inline=False)

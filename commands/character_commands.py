@@ -1,5 +1,6 @@
 import json
 import logging
+import random
 import typing
 import math
 from core import utils, display, views, autocomplete
@@ -22,10 +23,10 @@ from core.character import (
 from core.display import stg_character_embed, character_embed, log_embed
 from core.autocomplete import (settlement_autocomplete, region_autocomplete,
                                own_character_select_autocompletion, title_autocomplete, fame_autocomplete,
-                               kingdom_autocomplete
+                               kingdom_autocomplete, character_select_autocompletion
                                )
 from core.utils import (
-    get_gold_breakdown, name_fix,
+    get_gold_breakdown, name_fix, safe_add,
 )
 from core.config import config_cache
 from core.cache import autocomplete_cache, build_home_cache
@@ -106,7 +107,7 @@ class CharacterCommands(commands.Cog, name='character'):
     @app_commands.autocomplete(settlement=settlement_autocomplete)
     @app_commands.describe(check="This is the value of your roll result, and the upper ceiling for rumors you can get.")
     async def rumor(self, interaction: discord.Interaction, kingdom: str, settlement: str, check: int):
-        await interaction.response.defer(thinking=True, ephemeral=True)
+        await interaction.response.defer(thinking=True, ephemeral=False)
         try:
             async with aiosqlite.connect(f"pathparser_{interaction.guild_id}.sqlite") as conn:
                 cursor = await conn.cursor()
@@ -114,7 +115,7 @@ class CharacterCommands(commands.Cog, name='character'):
                                 WITH Weighted AS (
                     SELECT
                         Rumor,
-                        RumorID
+                        RumorID,
                         SUM(Weight) OVER (
                             ORDER BY rowid
                             ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
@@ -141,14 +142,23 @@ class CharacterCommands(commands.Cog, name='character'):
                 """, (kingdom, settlement, check, kingdom, settlement, check))
                 rumor_results = await cursor.fetchone()
                 if rumor_results:
-                    embed = discord.Embed(title="So You're asking about Rumors, Ay?", description=f"ID: {rumor_results[0]}")
+                    rumor_titles = [
+                        "So you're asking about rumors, Ay?",
+                        "Seeking the fresh dirt on the road, huh?",
+                        "Got a thirst for some fresh tea?",
+                        "Have an ear for something new? Let's see if someone will bend it",
+                        "Looking for something spicy, perhaps this will do"
+                    ]
+                    rumor_list_length = len(rumor_results)
+                    random_slice = random.randint(1, rumor_list_length) -1
+                    embed = discord.Embed(title=rumor_titles[random_slice], description=f"{rumor_results[0]}")
                     embed.set_footer(text=f"Rumor ID: {rumor_results[1]}")
                     await interaction.followup.send(embed=embed)
                 else:
                     await  interaction.followup.send("The tea is poor drinking round these parts")
         except (aiosqlite.Error, TypeError, ValueError) as e:
             logging.exception(f"Error in Rumor command {e}")
-            await interaction.channel.send(f"Error in rumor command {e}")
+            await interaction.followup.send(f"Error in rumor command {e}")
 
 
     @character_group.command(name='move', description="Change Region")
@@ -257,8 +267,10 @@ class CharacterCommands(commands.Cog, name='character'):
                                 discord.app_commands.Choice(name='Oath of Offerings', value=2),
                                 discord.app_commands.Choice(name='Oath of Poverty', value=3),
                                 discord.app_commands.Choice(name='Oath of Absolute Poverty', value=4)])
+    @app_commands.choices(heroism=[discord.app_commands.Choice(name='Hero', value=1),
+                                discord.app_commands.Choice(name='Antihero', value=2)])
     @app_commands.describe(nickname='a shorthand way to look for your character in displays')
-    async def register(self, interaction: discord.Interaction, character_name: str, mythweavers: str, image_link: str,
+    async def register(self, interaction: discord.Interaction, character_name: str, mythweavers: str, image_link: str, heroism : discord.app_commands.Choice[int],
                        nickname: str = None,
                        titles: str = None, description: str = None, oath: discord.app_commands.Choice[int] = 1,
                        color: str = '#5865F2', backstory: str = None):
@@ -269,7 +281,7 @@ class CharacterCommands(commands.Cog, name='character'):
         author = interaction.user.name
         author_id = interaction.user.id
         time = datetime.datetime.now()
-
+        heroism_value = heroism if isinstance(heroism, int) else heroism.value
         oath_name = 'No Oath' if oath == 1 else oath.name
         oath_name = 'Offerings' if oath_name == 'Oath of Offerings' else oath_name
         oath_name = 'Poverty' if oath_name == 'Oath of Poverty' else oath_name
@@ -380,13 +392,13 @@ class CharacterCommands(commands.Cog, name='character'):
                             Player_Name, Player_ID, Character_Name, True_Character_Name, 
                             Nickname, Titles, Description, 
                             Oath, Level, Tier, Milestones, Milestones_Required, Trials, Trials_Required, Color, Mythweavers, 
-                            Image_Link, Backstory, Created_Date) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                            Image_Link, Backstory, Created_Date, Heroism) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
 
                             val = (
                                 author, author_id, character_name, true_character_name,
                                 nickname, titles, description,
                                 oath_name, starting_level, 0, base, milestones_to_level, 0, 0, color, mythweavers,
-                                image_link, backstory, time)
+                                image_link, backstory, time, heroism_value)
                             await cursor.execute(sql, val)
                             await conn.commit()
                             embed = await stg_character_embed(character_name, interaction.guild)
@@ -435,14 +447,17 @@ class CharacterCommands(commands.Cog, name='character'):
                                 discord.app_commands.Choice(name='Poverty', value=3),
                                 discord.app_commands.Choice(name='Absolute', value=4),
                                 discord.app_commands.Choice(name='No Change', value=5)])
+    @app_commands.choices(heroism=[discord.app_commands.Choice(name='Hero', value=1),
+                                   discord.app_commands.Choice(name='Antihero', value=2)])
     @app_commands.describe(new_nickname='a shorthand way to look for your character in displays')
     async def edit(self, interaction: discord.Interaction, character_name: str, new_character_name: str = None,
-                   mythweavers: str = None,
+                   mythweavers: str = None, heroism: int = None,
                    image_link: str = None, new_nickname: str = None, titles: str = None, description: str = None,
                    oath: discord.app_commands.Choice[int] = 5, color: str = None):
         guild_id = interaction.guild_id
         guild = interaction.guild
         author = interaction.user.name
+        heroism_value = heroism if isinstance(heroism, int) else heroism.value
         await interaction.response.defer(thinking=True, ephemeral=True)
         async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as conn:
             cursor = await conn.cursor()
@@ -456,7 +471,7 @@ class CharacterCommands(commands.Cog, name='character'):
                 await cursor.execute(sql, val)
                 results = await cursor.fetchone()
                 if results is None:
-                    sql = "SELECT True_Character_Name, Nickname, Titles, Description, Mythweavers, Image_Link, Oath, Color, Level, Tier, Milestones, Milestones_Required, Trials, Trials_required, Character_Name from A_STG_Player_Characters where Player_Name = ? AND (Character_Name = ? OR  Nickname = ?)"
+                    sql = "SELECT True_Character_Name, Nickname, Titles, Description, Mythweavers, Image_Link, Oath, Color, Level, Tier, Milestones, Milestones_Required, Trials, Trials_required, Character_Name, Heroism from A_STG_Player_Characters where Player_Name = ? AND (Character_Name = ? OR  Nickname = ?)"
                     val = (author, character_name, character_name)
                     await cursor.execute(sql, val)
                     results = await cursor.fetchone()
@@ -466,7 +481,7 @@ class CharacterCommands(commands.Cog, name='character'):
                     else:
                         (stg_true_character_name, stg_nickname, stg_titles, stg_description, stg_mythweavers,
                          stg_image_link, stg_oath, stg_color, stg_level, stg_tier, stg_milestones,
-                         stg_milestones_required, stg_trials, stg_trials_required, stg_character_name) = results
+                         stg_milestones_required, stg_trials, stg_trials_required, stg_character_name, stg_heroim) = results
                         if new_character_name is not None:
                             if len(character_name) > 99:
                                 await interaction.followup.send(f"Character Name is too long, please shorten it.")
@@ -543,10 +558,10 @@ class CharacterCommands(commands.Cog, name='character'):
                             await cursor.execute("update a_stg_player_characters set "
                                                  "True_Character_Name = ?, Character_Name = ?, Nickname = ?, Titles = ?,"
                                                  " Description = ?, Mythweavers = ?, Image_Link = ?, Oath = ?, "
-                                                 "Color = ? "
+                                                 "Color = ? , heroism = Coalesce(?, heroism)"
                                                  "where Character_Name = ?", (
                                                      true_character_name, new_character_name, new_nickname, titles,
-                                                     description, mythweavers, image_link, oath_name, color,
+                                                     description, mythweavers, image_link, oath_name, color, heroism_value,
                                                      character_name))
                             await conn.commit()
                             embed = await stg_character_embed(new_character_name, interaction.guild)
@@ -689,11 +704,11 @@ class CharacterCommands(commands.Cog, name='character'):
                                 pass
                                 # await EventCommand.edit_bio(self, guild_id, new_character_name, None, results[22])
                             await cursor.execute(
-                                "update Player_Characters set True_Character_Name = ?, Character_Name = ?, Nickname = ?, Titles = ?, Description = ?, Mythweavers = ?, Image_Link = ?, Oath = ?, Color = ? where Character_Name = ?",
+                                "update Player_Characters set True_Character_Name = ?, Character_Name = ?, Nickname = ?, Titles = ?, Description = ?, Mythweavers = ?, Image_Link = ?, Oath = ?, Color = ?, heroism = coalesce(?, heroism) where Character_Name = ?",
                                 (
                                     true_character_name, new_character_name, new_nickname, titles, description,
                                     mythweavers,
-                                    image_link, oath_name, color, character_name))
+                                    image_link, oath_name, color, heroism_value, character_name))
                             await conn.commit()
                             validate_update = await update_character_name(guild_id, new_character_name,
                                                                           new_character_name)
@@ -787,7 +802,7 @@ class CharacterCommands(commands.Cog, name='character'):
                 cursor = await conn.cursor()
                 try:
                     await cursor.execute(
-                        "SELECT Character_Name, Personal_Cap, Level, Milestones, tier, trials, Thread_ID, region FROM Player_Characters WHERE Player_Name = ? AND (Character_Name = ? OR Nickname = ?)",
+                        "SELECT Character_Name, Personal_Cap, Level, Milestones, tier, trials, Thread_ID, region, Heroism, Hero_points, Hero_points_max FROM Player_Characters WHERE Player_Name = ? AND (Character_Name = ? OR Nickname = ?)",
                         (interaction.user.name, character_name, character_name))
                     player_info = await cursor.fetchone()
                     if player_info is None:
@@ -803,7 +818,6 @@ class CharacterCommands(commands.Cog, name='character'):
 
                         personal_cap = server_max_level if not personal_cap else personal_cap
                         max_level = min(server_max_level, personal_cap)
-                        print(max_level, personal_cap, server_max_level)
                         if level >= max_level:
                             await interaction.followup.send(
                                 f"{character_name} is already at the maximum level of {max_level}.",
@@ -814,6 +828,7 @@ class CharacterCommands(commands.Cog, name='character'):
                                 configs = config_cache.cache.get(guild_id)
                                 if configs:
                                     item_id = configs.get('UBB_Medium_Job')
+                                    hero_points_level = configs.get('Hero_Points_Level')
                                 item = await server_inventory_check(guild_id, interaction.user.id, item_id, amount)
                             if item == 0:
                                 await interaction.followup.send(
@@ -823,10 +838,11 @@ class CharacterCommands(commands.Cog, name='character'):
                             else:
                                 used = 0
                                 new_level_info = (0, 0, 0, 0, 0)
+                                new_level = level
                                 while used < item and level <= max_level:
                                     used += 1
                                     new_level_info = await level_calculation(
-                                        level=level,
+                                        level=new_level,
                                         guild=interaction.guild,
                                         guild_id=interaction.guild.id,
                                         base=base,
@@ -840,21 +856,28 @@ class CharacterCommands(commands.Cog, name='character'):
                                         character_name=character_name,
                                         region=region
                                     )
-                                    level = new_level_info[0]
+                                    new_level = new_level_info[0]
                                     base = new_level_info[1]
-
+                                character_updates = UpdateCharacterData(
+                                    level_package=(new_level, base, new_level_info[4]),
+                                    character_name=character_name
+                                )
+                                if new_level > level:
+                                    if player_info[7] == 1:
+                                        level_difference = new_level - level
+                                        hero_points_differential = hero_points_level * level_difference + player_info[8]
+                                        hero_points = min(hero_points_differential, player_info[9])
+                                        if hero_points != player_info[8]:
+                                            character_updates.hero_points = (player_info[7], hero_points)
                                 mythic_results = await mythic_calculation(
                                     character_name=character_name,
-                                    level=level,
+                                    level=new_level,
                                     trials=trials,
                                     trial_change=0,
                                     guild_id=guild_id,
                                     tier=tier
                                 )
-                                character_updates = UpdateCharacterData(
-                                    level_package=(level, base, new_level_info[4]),
-                                    character_name=character_name
-                                )
+
                                 if tier != mythic_results[0]:
                                     character_updates.mythic_package = (
                                         mythic_results[0], mythic_results[1], mythic_results[3])
@@ -869,12 +892,14 @@ class CharacterCommands(commands.Cog, name='character'):
                                     character_name=character_name,
                                     author=author,
                                     source='Level Up',
-                                    level=level,
+                                    level=new_level,
                                     milestone_change=base - starting_base,
                                     milestones_total=base,
                                     milestones_remaining=new_level_info[4]
                                 )
-
+                                if character_updates.hero_package:
+                                    character_changes.heroism = character_updates.hero_package[0]
+                                    character_changes.hero_points = character_updates.hero_package[1] - hero_points
                                 await roleplay.handle_use(
                                     db=conn,
                                     interaction=interaction,
@@ -1130,6 +1155,65 @@ class CharacterCommands(commands.Cog, name='character'):
                     f"A SQLite error occurred in the pouch command for: '{character_name}'. Error: {e}.",
                     ephemeral=True
                 )
+
+    @character_group.command(name='heroism', description='spend hero points!')
+    @app_commands.autocomplete(character=character_select_autocompletion)
+    async def hero_points(self, interaction: discord.Interaction, character: str, usage: int,
+                          reason: str):
+        """Add or remove from a player's fame and prestige!"""
+        guild_id = interaction.guild_id
+        guild = interaction.guild
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        try:
+            async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
+                cursor = await db.cursor()
+                await cursor.execute(
+                    "SELECT Thread_ID, Heroism, Hero_Points, Hero_Points_Max from Player_Characters where Character_Name = ?",
+                    (character,))
+                player_info = await cursor.fetchone()
+                if player_info is not None:
+                    (thread_id, heroism, info_hero_points, hero_points_max) = player_info
+                    print(usage, info_hero_points)
+                    if heroism == 2:
+                        await interaction.followup.send("Fuck off, this character is an antihero.")
+                        fetch_won = interaction.guild.fetch_member(179011441825677313)
+                        if fetch_won:
+                            await interaction.channel.send(content=f"Hey, <@179011441825677313>, {interaction.user} just tried to spend hero points when they're an antihero. Ban them.")
+                        return
+                    if usage > info_hero_points:
+                        await interaction.followup.send("YOU ARE TOO MUCH OF A PEASANT FOR __MY__ GLORIOUS HERO POINTS")
+                        return
+                    new_hero_points = info_hero_points - usage
+                    reason = "" if not reason else reason + "\r\n"
+                    if new_hero_points != info_hero_points:
+                        change = new_hero_points - info_hero_points
+                        character_updates = UpdateCharacterData(
+                            character_name=character,
+                            hero_package=(heroism, new_hero_points))
+                        await update_character(guild_id=guild_id, change=character_updates)
+                        reason += f"Hero point change by {interaction.user.name}.\r\n" + reason if reason is not None else f"Hero Point change by {interaction.user.name}."
+
+                        character_changes = CharacterChange(
+                            character_name=character,
+                            author=interaction.user.name,
+                            heroism=heroism,
+                            hero_point_change=change)
+                        log_update = await log_embed(
+                            guild=guild,
+                            thread=thread_id,
+                            change=character_changes,
+                            bot=self.bot)
+                        await character_embed(character_name=character,guild=interaction.guild)
+                        await interaction.followup.send(embed=log_update)
+                    else:
+                        await interaction.followup.send("YOU ABSOLUTE MONKEY. WHAT DID YOU EVEN CHANGE?")
+                else:
+                    await interaction.followup.send_message(
+                        f"Character {character} does not exist! Could not complete transaction!")
+        except (aiosqlite, TypeError, ValueError) as e:
+            logging.exception(f"An error occurred whilst updating a character's hero points: {e}")
+            await interaction.followup.send_message(
+                f"An error occurred whilst updating a character's hero points. {e}")
 
     # Nested group
     title_group = discord.app_commands.Group(
@@ -1602,7 +1686,7 @@ class CharacterCommands(commands.Cog, name='character'):
                     # Fetch character information
                 await cursor.execute(
                     """
-                    SELECT Character_Name, Milestones, Level, tier, Trials, Thread_ID, Region
+                    SELECT Character_Name, Milestones, Level, tier, Trials, Thread_ID, Region, Heroism, Hero_Points, Hero_Points_Max
                     FROM Player_Characters
                     WHERE Player_Name = ? AND (Character_Name = ? OR Nickname = ?)
                     """,
@@ -1617,7 +1701,7 @@ class CharacterCommands(commands.Cog, name='character'):
                     )
                     return
 
-                (character_name_db, milestones, level, tier, trials, thread_id, region) = character_info
+                (character_name_db, milestones, level, tier, trials, thread_id, region, heroism, hero_points, hero_points_max) = character_info
 
                 # Update the personal cap in the database
                 await cursor.execute(
@@ -1700,6 +1784,20 @@ class CharacterCommands(commands.Cog, name='character'):
                     except CalculationAidFunctionError as e:
                         character_changes.source += f" Error adjusting mythic: {e}"
                         logging.exception(f"Mythic calculation error for character '{character_name_db}': {e}")
+
+                    if calculated_level > level:
+                        if heroism == 1:
+                            async with config_cache.lock:
+                                configs = config_cache.cache.get(guild_id)
+                                if configs:
+                                    hero_points_level = configs.get('Hero_Points_Level')
+                            level_difference = calculated_level - level
+                            hero_points_differential = hero_points_level * level_difference + hero_points
+                            new_hero_points = min(hero_points_differential, hero_points_max)
+                            if new_hero_points != hero_points:
+                                character_updates.hero_package = (heroism, new_hero_points)
+                                character_changes.hero_points = new_hero_points - hero_points
+                                character_changes.heroism = heroism
 
                     # update the character
                     await update_character(change=character_updates, guild_id=guild_id)

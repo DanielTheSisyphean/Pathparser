@@ -33,6 +33,7 @@ from core.kingdom_actions import (
 from core.kingdom_fetching import (
     fetch_kingdom, fetch_building, fetch_hex_improvement, fetch_resources
 )
+from core.kingdom_logging import kingdom_embed, settlement_embed
 from core.kingdom_views import (
     LeadershipView, HexView, ImprovementView, BlueprintView,
     SettlementBuildingsView, ArmyView, KingdomEventView, TradeView,
@@ -86,7 +87,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
             region: str,
             government: str,
             alignment: str,
-            heraldry: str,
+            heraldry: typing.Optional[str],
             channel: discord.TextChannel
     ):
         """This creates allows a player to create a new kingdom"""
@@ -101,10 +102,14 @@ class KingdomCommands(commands.Cog, name='kingdom'):
                 government=government,
                 region=region,
                 password=password,
-                image_link=heraldry,
-                channel=channel
+                image_link=heraldry
             )
             await interaction.followup.send(content=kingdom_create)
+            await kingdom_embed(
+                kingdom=kingdom,
+                guild=interaction.guild,
+                channel=channel
+            )
         except Exception as e:
             logging.exception(f"Error creating a kingdom: {e}")
             await interaction.followup.send(content="An error occurred while creating a kingdom.")
@@ -796,7 +801,7 @@ class KingdomCommands(commands.Cog, name='kingdom'):
     @settlement_group.command(name="claim", description="Claim a settlement for a kingdom")
     @app_commands.autocomplete(kingdom=kingdom_autocomplete)
     async def claim_settlement(self, interaction: discord.Interaction, kingdom: str, password: str, settlement: str,
-                               hex_id: int, image_link: str):
+                               hex_id: int, image_link: str, channel: discord.TextChannel):
         """This command is used to claim a settlement for a kingdom"""
         await interaction.response.defer(thinking=True)
         try:
@@ -844,6 +849,11 @@ class KingdomCommands(commands.Cog, name='kingdom'):
                 status = await claim_a_settlement(interaction.guild_id, interaction.user.id, kingdom, settlement,
                                                   hex_id, image_link)
                 await interaction.followup.send(content=status)
+                await settlement_embed(
+                    settlement=settlement,
+                    guild=interaction.guild,
+                    channel=channel
+                )
         except (aiosqlite.Error, TypeError, ValueError) as e:
             logging.exception(f"Error claiming settlement: {e}")
             await interaction.followup.send(content="An error occurred while claiming a settlement.")

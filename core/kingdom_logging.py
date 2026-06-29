@@ -45,7 +45,7 @@ async def kingdom_embed(
             )
             embed.add_field(
                 name="Resources",
-                value=f':hammer: **Build Points**: {kingdom_info.build_points}, :star: **Fame**: {kingdom_info.fame.total} :busts_in_silhouette: **Population**: {kingdom_info.population}, :Orange_Hexagon_shape: **Size**: {kingdom_info.size.total} hexes.'
+                value=f':hammer: **Build Points**: {kingdom_info.build_points}, :star: **Fame**: {kingdom_info.fame.total} :busts_in_silhouette: **Population**: {kingdom_info.population}, _Hexagon_shape: **Size**: {kingdom_info.size.total} hexes.'
             )
             embed.add_field(
                 name="Other",
@@ -54,33 +54,33 @@ async def kingdom_embed(
             )
 
         # Fetch the bio channel
-        if kingdom_info.host_channel:
-            kingdom_channel = guild.get_channel(kingdom_info.host_channel)
-            if kingdom_channel is None:
-                kingdom_channel = await guild.fetch_channel(kingdom_info.host_channel)
-            if kingdom_channel is None:
-                return f"Channel with ID {kingdom_info.host_channel} not found."
+            if kingdom_info.host_channel:
+                kingdom_channel = guild.get_channel(kingdom_info.host_channel)
+                if kingdom_channel is None:
+                    kingdom_channel = await guild.fetch_channel(kingdom_info.host_channel)
+                if kingdom_channel is None:
+                    return f"Channel with ID {kingdom_info.host_channel} not found."
 
-        # Fetch and edit the message
-            try:
-                host_message = await kingdom_channel.fetch_message(kingdom_info.host_message)
-                await host_message.edit(embed=embed)
-            except discord.NotFound:
-                return f"Message with ID {kingdom_info.host_message} not found in channel {kingdom_info.host_channel}."
-            except discord.Forbidden:
-                return "Bot lacks permissions to edit the message."
-            except discord.HTTPException as e:
-                logging.exception(f"Discord error while editing message: {e}")
-                return "An error occurred while editing the message."
-        elif channel:
-            kingdom_info.host_channel = channel.id
-            host_message = await channel.send(embed=embed)
-            kingdom_info.host_message = host_message.id
-            kingdom_thread = await host_message.create_thread(name=f"{kingdom_info.kingdom} Log")
-            await cursor.execute("Update KB_Kingdoms set Host_Channel = ?, host_message = ?, log_thread = ? where kingdom = ?",(kingdom_info.host_channel,host_message.id, kingdom_thread, kingdom_info.kingdom))
-            await conn.commit()
+            # Fetch and edit the message
+                try:
+                    host_message = await kingdom_channel.fetch_message(kingdom_info.host_message)
+                    await host_message.edit(embed=embed)
+                except discord.NotFound:
+                    return f"Message with ID {kingdom_info.host_message} not found in channel {kingdom_info.host_channel}."
+                except discord.Forbidden:
+                    return "Bot lacks permissions to edit the message."
+                except discord.HTTPException as e:
+                    logging.exception(f"Discord error while editing message: {e}")
+                    return "An error occurred while editing the message."
+            elif channel:
+                kingdom_info.host_channel = channel.id
+                host_message = await channel.send(embed=embed)
+                kingdom_info.host_message = host_message.id
+                kingdom_thread = await host_message.create_thread(name=f"{kingdom_info.kingdom} Log")
+                await cursor.execute("Update KB_Kingdoms set Host_Channel = ?, host_message = ?, log_thread = ? where kingdom = ?",(kingdom_info.host_channel,host_message.id, kingdom_thread.id, kingdom_info.kingdom))
+                await conn.commit()
 
-        return embed, kingdom_info
+            return embed, kingdom_info
 
     except aiosqlite.Error as e:
         logging.exception(f"Database error: {e}")
@@ -117,7 +117,7 @@ async def settlement_embed(
 
             embed.add_field(
                 name="Primary Stats",
-                value=f':see_no_evil: **Corruption:**: {settlement_info.corruption.total}, :supervillain: **Crime**: {settlement_info.crime.total}, :hammer_pick: **Productivity**: {settlement_info.productivity.total}, :scales: **Law** {settlement_info.law.total}, :book:      **Lore**: {settlement_info.lore}. :speech_balloon: **Society**: {settlement_info.society.total}',
+                value=f':see_no_evil: **Corruption:**: {settlement_info.corruption.total}, :supervillain: **Crime**: {settlement_info.crime.total}, :hammer_pick: **Productivity**: {settlement_info.productivity.total}, :scales: **Law** {settlement_info.law.total}, :book:      **Lore**: {settlement_info.lore.total}. :speech_balloon: **Society**: {settlement_info.society.total}',
                 inline=False
             )
             embed.add_field(
@@ -137,50 +137,53 @@ async def settlement_embed(
                 Wind_Speed, 
                 Precipitation_probability, 
                 Cloud_cover, 
+                humidity, 
                 WMO_Code,
-                Coalesce(WSet.Result, WAll.result) 
+                Coalesce(WSet.Result, WAll.result)
                 from Weather_History WH
-                LEFT JOIN Weather_WMO WSet on WW.Code = WH.WMO_Code and WH.Settlement = ?
-                LEFT JOIN Weather_WMO WAll on WW.Code = WH.WMO_Code and WH.Settlement = 'All' 
-                where Settlement = ? and Date = ?""",
-                                     (settlement, settlement, datetime.now().strftime("%Y%m%d")))
+                LEFT JOIN Weather_WMO WSet on WSet.Code = WH.WMO_Code and WH.Settlement = ?
+                LEFT JOIN Weather_WMO WAll on WAll.Code = WH.WMO_Code and WH.Settlement = 'All' 
+                where WH.Settlement = ? and Date = ?""",
+                                     (settlement, settlement, datetime.now().strftime("%Y-%m-%d")))
                 weather_info = await cursor.fetchone()
                 if weather_info:
-                    (temp_high, temp_low, wind_speed, precipitation_probability, cloud_cover, wmo_code, wmo_result) = weather_info
-                    weather_embed = discord.Embed(title="Weather", description=wmo_result)
+                    (temp_high, temp_low, wind_speed, precipitation_probability, cloud_cover, humidity, wmo_code, wmo_result) = weather_info
+                    weather_embed = discord.Embed(title="Weather Report", description=f"-# {wmo_result}")
                     weather_conditions = f"""
-                    A high of {temp_high} and low of {temp_low}
-                    With a wind speed of {wind_speed} MPH and cloud cover of {cloud_cover}% and a {precipitation_probability}% chance of precipitation. 
+                    :sun_with_face: High: {temp_high}°f :snowflake: Low: {temp_low}°f
+                    :leaves: Wind: {wind_speed} MPH :droplet: {humidity}% humidity 
+                    :cloud: Cloud Cover: {cloud_cover}% :cloud_rain: Precipitation Probability: {precipitation_probability}%
                     """
                     weather_embed.add_field(name="Conditions", value=weather_conditions)
                     embeds.append(weather_embed)
 
 
-        # Fetch the bio channel
-        if settlement_info.host_channel:
-            kingdom_channel = guild.get_channel(settlement_info.host_channel)
-            if kingdom_channel is None:
-                kingdom_channel = await guild.fetch_channel(settlement_info.host_channel)
-            if kingdom_channel is None:
-                return f"Channel with ID {settlement_info.host_channel} not found."
+            # Fetch the bio channel
+            if settlement_info.host_channel:
+                print("editing Channel")
+                kingdom_channel = guild.get_channel(settlement_info.host_channel)
+                if kingdom_channel is None:
+                    kingdom_channel = await guild.fetch_channel(settlement_info.host_channel)
+                if kingdom_channel is None:
+                    return f"Channel with ID {settlement_info.host_channel} not found."
 
-        # Fetch and edit the message
-            try:
-                host_message = await kingdom_channel.fetch_message(settlement_info.host_message)
-                await host_message.edit(embeds=embeds)
-            except discord.NotFound:
-                return f"Message with ID {settlement_info.host_message} not found in channel {settlement_info.host_channel}."
-            except discord.Forbidden:
-                return "Bot lacks permissions to edit the message."
-            except discord.HTTPException as e:
-                logging.exception(f"Discord error while editing message: {e}")
-                return "An error occurred while editing the message."
-        elif channel:
-            settlement_info.host_channel = channel.id
-            host_message = await channel.send(embeds=embeds)
-            settlement_info.host_message = host_message.id
-            await cursor.execute("Update KB_Settlement set Host_Channel = ?, host_message = ? where settlement = ?",(settlement_info.host_channel,host_message.id, settlement_info.kingdom))
-            await conn.commit()
+            # Fetch and edit the message
+                try:
+                    host_message = await kingdom_channel.fetch_message(settlement_info.host_message)
+                    await host_message.edit(embeds=embeds)
+                except discord.NotFound:
+                    return f"Message with ID {settlement_info.host_message} not found in channel {settlement_info.host_channel}."
+                except discord.Forbidden:
+                    return "Bot lacks permissions to edit the message."
+                except discord.HTTPException as e:
+                    logging.exception(f"Discord error while editing message: {e}")
+                    return "An error occurred while editing the message."
+            elif channel:
+                settlement_info.host_channel = channel.id
+                host_message = await channel.send(embeds=embeds)
+                settlement_info.host_message = host_message.id
+                await cursor.execute("Update KB_Settlements set Host_Channel = ?, host_message = ? where settlement = ?",(settlement_info.host_channel,host_message.id, settlement_info.settlement))
+                await conn.commit()
 
         return embeds, settlement_info
 
@@ -251,7 +254,7 @@ async def log_embed(bot, guild: discord.Guild, old_kingdom_info: KingdomInfo,
                 resource_stat_changes += f":hammer: Current Build Points: {new_kingdom_info.build_points}, Change: {build_points_changes}\r\n" if new_kingdom_info.build_points else ""
                 resource_stat_changes += f":star: Current Fame: {new_kingdom_info.fame.total}, Change: {fame_change}\r\n" if fame_change else ""
                 resource_stat_changes += f":busts_in_silhouette: Current Population: {new_kingdom_info.population}, Change: {population_change}\r\n" if population_change else ""
-                resource_stat_changes += f":Orange_Hexagon_Shape: Current Size: {new_kingdom_info.size} hexes, Change: {size_change}\r\n" if size_change else ""
+                resource_stat_changes += f":Orange_Hexagon_shape: Current Size: {new_kingdom_info.size} hexes, Change: {size_change}\r\n" if size_change else ""
                 embed_kingdom.add_field(name=f"Resource Changes",value=resource_stat_changes, inline=False)
 
             if (old_kingdom_info.control_dc.total != new_kingdom_info.control_dc.total

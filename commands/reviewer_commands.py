@@ -110,7 +110,7 @@ async def register_character_embed(
                 SELECT player_name, player_id, True_Character_Name, Title, Titles, Description, Oath, Level,
                        Tier, Milestones, Milestones_Required, Trials, Trials_Required, Gold, Gold_Value,
                        Essence, Fame, Prestige, Color, Mythweavers, Image_Link, Tradition_Name,
-                       Tradition_Link, Template_Name, Template_Link, Article_Link, Message_ID
+                       Tradition_Link, Template_Name, Template_Link, Article_Link, Message_ID, Heroism, Hero_Points
                 FROM Player_Characters WHERE Character_Name = ?
                 """, (character_name,))
             character_info = await cursor.fetchone()
@@ -144,6 +144,8 @@ async def register_character_embed(
         template_name = character_info['Template_Name']
         template_link = character_info['Template_Link']
         article_link = character_info['Article_Link']
+        heroism = character_info['Heroism']
+        hero_points = character_info['Hero_Points']
 
         # Convert color to integer
         try:
@@ -168,9 +170,11 @@ async def register_character_embed(
         )
         embed.set_author(name=player_name)
         embed.set_thumbnail(url=image_link)
+        information_value = f'**Level**: {level}, **Mythic Tier**: {tier}\n**Fame**: {fame}, **Prestige**: {prestige}\n'
+        information_value += f"**Hero Points:** {hero_points}" if heroism == 1 else ""
         embed.add_field(
             name="Information",
-            value=f'**Level**: {level}, **Mythic Tier**: {tier}\n**Fame**: {fame}, **Prestige**: {prestige}',
+            value=information_value,
             inline=False
         )
         embed.add_field(
@@ -334,7 +338,7 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
             await cursor.execute(
                 """Select Player_Name, Player_ID, True_Character_Name, Character_Name, Nickname, Titles, Description, 
                 Oath, Tier, Trials, Trials_Required,
-                 Color, Mythweavers, Image_Link, Backstory
+                 Color, Mythweavers, Image_Link, Backstory, Heroism
                  FROM A_STG_Player_Characters where Character_Name = ?""",
                 (character_name,))
             player_info = await cursor.fetchone()
@@ -365,16 +369,17 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
                     info_mythweavers = player_info['mythweavers']
                     info_image_link = player_info['image_link']
                     info_tmp_bio = player_info['Backstory']
+                    info_heroism = player_info['Heroism']
                     async with config_cache.lock:
                         configs = config_cache.cache.get(interaction.guild.id)
-                        print("heya heya")
-                        print(configs)
                         if configs:
                             character_log_channel_id = configs.get('Char_Eventlog_Channel')
                             backstory_category = configs.get('WA_Backstory_Category')
                             starting_level = configs.get('Starting_Level')
                             approved_character_role = configs.get('Approved_Character')
                             approved_message_title = configs.get('Approved_Message_Title')
+                            base_hero_points = configs.get('Hero_Points_Base')
+                            max_hero_points = configs.get('Hero_Points_Max')
                             if approved_message_title:
                                 approved_message_title = approved_message_title.replace("{user}", f"<@{info_player_id}>")
                                 approved_message_title = approved_message_title.replace("{User}", f"<@{info_player_id}>")
@@ -430,15 +435,18 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
                     await cursor.execute(
                         """INSERT INTO Player_Characters (Player_Name, Player_ID, True_Character_Name, Character_Name, 
                         Nickname, Titles, Description, Oath, Level, Tier, Milestones, Milestones_Required, Trials, Trials_Required, 
-                        Gold, Gold_Value, Gold_value_Max, Essence, Color, Mythweavers, Image_Link, Fame, Prestige, Accepted_Date) VALUES (
+                        Gold, Gold_Value, Gold_value_Max, Essence, Color, Mythweavers, Image_Link, Fame, Prestige, Accepted_Date, 
+                        heroism, hero_points, hero_points_max) VALUES (
                         ?,?,?,?,
                         ?,?,?,?,?,?,?,?,?,?,
-                        ?,?,?,?,?,?,?,?, ?, ?)""",
+                        ?,?,?,?,?,?,?,?,?,?,
+                        ?,?,?)""",
                         (info_player_name, info_player_id, info_true_character_name, info_character_name,
                          info_nickname, info_titles, info_description, info_oath, starting_level, info_tier,
                          info_minimum_milestones, info_milestones_to_level, info_trials, info_trials_required,
                          str(gold_total), str(gold_value_total), str(gold_value_max_total), 0, info_color, info_mythweavers,
-                         info_image_link, 0, 0, datetime.datetime.utcnow()))
+                         info_image_link, 0, 0, datetime.datetime.utcnow(), info_heroism, base_hero_points, max_hero_points)
+                    )
                     await db.commit()
                     await cursor.execute("DELETE FROM A_STG_Player_Characters WHERE Character_Name = ?",
                                          (character_name,))

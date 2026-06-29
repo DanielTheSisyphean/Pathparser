@@ -1009,7 +1009,7 @@ class RumorShopView(ShopView):
         settlement = self.settlement
 
         async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
-            cursor = await db.execute()
+            cursor = await db.cursor()
             if kingdom and settlement:
                 await cursor.execute("Select RumorID, Kingdom, Settlement, DC, Rumor, Weight from Rumors where Kingdom = ? and Settlement = ? LIMIT ? OFFSET ?", (kingdom, settlement,self.limit, self.offset))
             elif kingdom:
@@ -1043,7 +1043,7 @@ class RumorShopView(ShopView):
             kingdom = self.kingdom
             settlement = self.settlement
             async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
-                cursor = await db.execute()
+                cursor = await db.cursor()
                 if kingdom and settlement:
                     await cursor.execute("Select Count(*) from Rumors where kingdom = ? and Settlement = ?",
                                          (kingdom, settlement))
@@ -1052,7 +1052,7 @@ class RumorShopView(ShopView):
                 elif settlement:
                     await cursor.execute("Select Count(*) from Rumors where settlement = ?", (settlement,))
                 else:
-                    await cursor.exexcute("Select Count(*) from rumors")
+                    await cursor.execute("Select Count(*) from rumors")
                 rumor_info = await cursor.fetchone()
                 self.max_items = rumor_info[0]
         return self.max_items

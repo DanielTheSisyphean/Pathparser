@@ -55,8 +55,7 @@ async def create_a_kingdom(
         password: str,
         government: str,
         alignment: str,
-        image_link: str,
-        channel: discord.TextChannel
+        image_link: str
 ) -> str:
     try:
         if image_link is not None:
@@ -93,7 +92,7 @@ async def create_a_kingdom(
             Control_DC, Build_Points,
             Stored_seafood, Stored_meat, Stored_grain, Stored_produce,
             Holiday, Promotion, Taxation, Improvements, Buildings,
-            Buildings_Housing, Claims, Available_Population, Heraldry, Host_Channel
+            Buildings_Housing, Claims, Available_Population, Heraldry
             ) VALUES (
             ?, ?, ?, ?, ?, 0, 0, 
             ?, ?, ?,
@@ -101,9 +100,9 @@ async def create_a_kingdom(
             0, 0,
             0, 0, 0, 0,
             0, 0, 0, 0, 0,
-            0, 0, 0, ?, ?
+            0, 0, 0, ?
             )
-            """, (kingdom, hashed_password, government, alignment, region, economy, loyalty, stability, image_link, channel.id))
+            """, (kingdom, hashed_password, government, alignment, region, economy, loyalty, stability, image_link))
             await cursor.execute(
                 """Insert into A_Audit_All (Author, Timestamp, Database_Changed, Modification, Reason) VALUES (?, ?, ?, ?, ?)""",
                 (author, datetime.datetime.now(), "kb_Kingdoms", "Create", f"Created the kingdom of {kingdom}"))
@@ -264,6 +263,9 @@ async def delete_a_kingdom(
             await cursor.execute("DELETE FROM KB_Turn_History_Settlement where Kingdom = ?", (kingdom,))
             await cursor.execute("DELETE FROM KB_Turn_Penalty_Kingdom where Kingdom = ?", (kingdom,))
             await cursor.execute("DELETE FROM KB_Turn_Penalty_Settlement where Kingdom = ?", (kingdom,))
+            await cursor.execute("""DELETE FROM Weather_History 
+            WHERE Settlement IN (SELECT ks.Settlement FROM KB_Settlements ks
+            WHERE ks.Kingdom = ?);""", (kingdom,))
             await cursor.execute(
                 "Insert into A_Audit_All (Author, Timestamp, Database_Changed, Modification, Reason) VALUES (?, ?, ?, ?, ?)",
                 (author, datetime.datetime.now(), "kb_Kingdoms", "Delete", f"Deleted the kingdom of {kingdom}"))
@@ -664,16 +666,15 @@ async def claim_a_settlement(
         kingdom: str,
         settlement: str,
         hex_id: int,
-        image_link: str,
-        channel: discord.TextChannel
+        image_link: str
 ) -> str:
     try:
         async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as db:
             cursor = await db.cursor()
 
             await cursor.execute(
-                "INSERT INTO kb_settlements (Kingdom, Settlement, Size, Population, Corruption, Crime, Productivity, Law, Lore, Society, Danger, Defence, Base_Value, Spellcasting, Supply, Decay, hex_id, image, Host_Channel) VALUES (?, ?, 1, 250, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ?, ?, ?)",
-                (kingdom, settlement, hex_id, image_link, channel.id))
+                "INSERT INTO kb_settlements (Kingdom, Settlement, Size, Population, Corruption, Crime, Productivity, Law, Lore, Society, Danger, Defence, Base_Value, Spellcasting, Supply, Decay, hex_id, image) VALUES (?, ?, 1, 250, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ?, ?)",
+                (kingdom, settlement, hex_id, image_link))
             await cursor.execute(
                 "INSERT INTO kb_settlements_Custom (Kingdom, Settlement, Corruption, Crime, Productivity, Law, Lore, Society, Danger, Defence, Base_Value, Spellcasting, Supply) VALUES (?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)",
                 (kingdom, settlement))
