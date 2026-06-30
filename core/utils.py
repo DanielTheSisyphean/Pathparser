@@ -87,7 +87,8 @@ def validate_mythweavers(url: str) -> Tuple[bool, str, int]:
         query_params = parse_qs(parsed_url.query)
         fragment_params = parse_qs(parsed_url.fragment)
         id_param = query_params.get('id') or fragment_params.get('id')
-        if not id_param or not id_param[0].isdigit():
+        print(query_params, fragment_params, id_param)
+        if not id_param:
             return False, "URL must contain a valid 'id' parameter", 3
         return True, "", -1
     except Exception as e:

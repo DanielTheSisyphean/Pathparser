@@ -52,21 +52,19 @@ class RPCommands(commands.Cog, name='RP'):
     @roleplay_group.command(name="balance", description="Check your roleplay balance")
     async def roleplay_balance(self, interaction: discord.Interaction, user: typing.Optional[discord.User] = None):
         await interaction.response.defer(thinking=True)
-
+        print("Test Prelock")
         async with roleplay_info_cache.lock:
             if interaction.guild.id not in roleplay_info_cache.cache:
                 await add_guild_to_rp_cache(interaction.guild.id)
             settings = roleplay_info_cache.cache[interaction.guild.id]
-
+            print("Test postlock")
             reward_name = settings.reward_name if settings.reward_name else "coins"
             reward_emoji = settings.reward_emoji if settings.reward_emoji else "<:RPCash:884166313260503060>"
-        if user is None:
-            user_id = interaction.user.id
-        else:
-            user_id = user.id
+        user = interaction.user if not user else user
         async with aiosqlite.connect(f"pathparser_{interaction.guild.id}.sqlite") as db:
+            print("Test in sql")
             cursor = await db.cursor()
-            await cursor.execute("SELECT balance FROM RP_Players WHERE user_id = ?", (user_id,))
+            await cursor.execute("SELECT balance FROM RP_Players WHERE user_id = ?", (user.id,))
             user_data = await cursor.fetchone()
             await cursor.execute(
                 """
@@ -76,15 +74,16 @@ class RPCommands(commands.Cog, name='RP'):
                 RANK() OVER (ORDER BY balance DESC) AS rank
                 FROM rp_players
                 ) ranked
-                WHERE user_id = ?;""", (user_id,))
+                WHERE user_id = ?;""", (user.id,))
             user_rank = await cursor.fetchone()
+            print('at user rank')
             if user_data:
                 balance = user_data[0]
                 formatted_balance = "{:,}".format(balance)
                 ordinal_position = utils.ordinal(user_rank[0])
-                embed = discord.Embed(title=interaction.user.name, description=f"Leaderboard Rank: {ordinal_position}")
+                embed = discord.Embed(title=user.name, description=f"Leaderboard Rank: {ordinal_position}")
                 try:
-                    embed.set_thumbnail(url=interaction.user.avatar.url)
+                    embed.set_thumbnail(url=user.avatar.url)
                 except AttributeError:
                     pass
                 embed.add_field(name="Balance", value=f"{formatted_balance} {reward_name} {reward_emoji}")

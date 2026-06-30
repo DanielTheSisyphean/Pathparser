@@ -478,7 +478,6 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
                         elif characters[0] > 1:
                             await thread.send(content=iterative_approval_content)
                     if info_tmp_bio:
-                        print(f"Creating article with {info_tmp_bio}")
                         try:
                             article = await put_wa_article(
                                 guild_id=interaction.guild.id, template='Person',

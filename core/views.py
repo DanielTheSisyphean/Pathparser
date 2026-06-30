@@ -1827,7 +1827,7 @@ class TicketView(discord.ui.View):
                             # Collect responses
                             thread = await modal_interaction.channel.create_thread(
                                 name=f"{name}-{modal_interaction.user.name}-{max_id[0]}",
-                                auto_archive_duration=10080
+                                auto_archive_duration=10080, type=discord.ChannelType.private_thread,
                             )
 
                             embed = discord.Embed(

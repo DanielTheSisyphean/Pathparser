@@ -147,7 +147,6 @@ async def character_embed(
             'Absolute': 'https://i.imgur.com/ibE5vSY.png'
         }
         icon_url = oath_icons.get(oath)
-        print(type(gold))
         embed.set_footer(text=description, icon_url=icon_url)
 
         message_content = f"<@{player_id}>"

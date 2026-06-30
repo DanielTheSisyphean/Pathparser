@@ -7,7 +7,7 @@ import aiosqlite
 
 @dataclass
 class ApprovedChannelCache:
-    cache: Dict[int, list[Dict[int, float]]] = field(default_factory=dict)
+    cache: Dict[int, Dict[int, float]] = field(default_factory=dict)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 @dataclass
@@ -41,7 +41,10 @@ async def add_guild_to_cache(guild_id: int) -> None:
                 await cursor.execute("SELECT Channel_ID, coalesce(Multiplier, 1) FROM rp_approved_Channels")
                 approved_channels = await cursor.fetchall()
                 # approved_channels is a list of tuples, extract the channel IDs
-                channel_ids = [{int(channel_id[0]): float(channel_id[1])} for channel_id in approved_channels]
+                channel_ids = {
+                    int(channel_id): float(multiplier)
+                    for channel_id, multiplier in approved_channels
+                }
                 approved_channel_cache.cache[guild_id] = channel_ids
     except aiosqlite.Error as e:
         logging.exception(f"Failed to add guild {guild_id} to cache with error: {e}")

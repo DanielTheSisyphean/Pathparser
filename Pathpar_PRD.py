@@ -26,6 +26,7 @@ from commands.kingdom_commands import KingdomCommands
 from commands.overseer_commands import OverseerCommands
 from commands.player_commands import PlayerCommands
 from commands.reviewer_commands import ReviewerCommands
+from commands.management_commands import ManagementCommands
 from scheduler_utils import scheduler, scheduled_jobs, remind_users, start_global_scheduler, shutdown_global_scheduler
 from test_functions import TestCommands
 
@@ -222,6 +223,7 @@ async def on_ready():
     await bot.add_cog(RPCommands(bot))
     await bot.add_cog(KingdomCommands(bot))
     await bot.add_cog(OverseerCommands(bot))
+    await bot.add_cog(ManagementCommands(bot))
     await bot.tree.sync()
     await start_global_scheduler(bot)
     await reinstate_reminders(bot)
@@ -291,7 +293,6 @@ async def on_message(message):
     # Check if the guild is in the cache
     async with approved_channel_cache.lock:
         if guild_id in approved_channel_cache.cache:
-            print("got a lock on it")
             if channel_id in approved_channel_cache.cache[guild_id]:
                 multiplier = approved_channel_cache.cache[guild_id][channel_id]
                 await handle_rp_message(message, multiplier)
@@ -305,15 +306,12 @@ async def on_message(message):
                     except Exception:
                         pass
             else:
-                print("i'm in here, handling memes.")
                 logging.debug(f"Channel {channel_id} is not approved. Processing commands.")
                 await meme_handler(message)
                 await bot.process_commands(message)
         else:
-            # Guild not in cache, add it
             logging.debug(f"Guild {guild_id} not in cache. Adding.")
             await add_guild_to_cache(guild_id)
-            # Re-check after adding
             if channel_id in approved_channel_cache.cache[guild_id]:
                 logging.debug(f"Channel {channel_id} is approved after cache update.")
                 await handle_rp_message(message)

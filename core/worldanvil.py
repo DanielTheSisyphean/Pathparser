@@ -80,7 +80,8 @@ def drive_word_document(overview: str) -> Optional[str]:
         return None
 
 async def put_wa_article(guild_id: int, template: str, category: str, title: str, overview: str, author: str) -> Optional[dict]:
-    allowed_guilds = [883009758179762208, 280061170231017472]
+    return None
+    """allowed_guilds = [883009758179762208, 280061170231017472]
     if guild_id not in allowed_guilds:
         logging.warning(f"Guild ID {guild_id} is not authorized to create articles.")
         return None
@@ -123,7 +124,7 @@ async def put_wa_article(guild_id: int, template: str, category: str, title: str
         return new_page
     except Exception as e:
         logging.exception(f"Error in article creation for title '{title}': {e}")
-        return None
+        return None"""
 
 async def patch_wa_article(guild_id: int, article_id: str, overview: str) -> Optional[dict]:
     allowed_guilds = [883009758179762208, 280061170231017472]
