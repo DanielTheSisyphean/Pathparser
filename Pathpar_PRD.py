@@ -69,19 +69,29 @@ async def reinstate_reminders(server_bot) -> None:
                 print(f"Reinstating reminders for guild {guild.id}")
                 print(now.timestamp())
                 await cursor.execute(
-                    "SELECT Session_ID, Session_Thread, Hammer_Time FROM Sessions WHERE IsActive = 1 AND Hammer_Time > ?",
+                    """
+                    SELECT 
+                        Session_ID, 
+                        Session_Thread,
+                            case when CAST(CAST(hammer_time AS INTEGER) AS TEXT) = CAST(hammer_time AS TEXT) THEN 'hammerTime'
+                            else 'createdTime'
+                            end as data_type, 
+                        Hammer_Time FROM Sessions WHERE IsActive = 1 AND Hammer_Time > ?
+                    
+                    """,
                     (now.timestamp(),)
                 )
                 reminders = await cursor.fetchall()
                 for reminder in reminders:
-                    (session_id, thread_id, hammer_time) = reminder
-                    scheduler_utils.schedule_session_reminders(
-                        session_id=session_id,
-                        thread_id=thread_id,
-                        hammer_time=hammer_time,
-                        guild_id=guild.id,
-                        bot=server_bot
-                    )
+                    (session_id, thread_id, data_type, hammer_time) = reminder
+                    if data_type == 'hammerTime':
+                        scheduler_utils.schedule_session_reminders(
+                            session_id=session_id,
+                            thread_id=thread_id,
+                            hammer_time=hammer_time,
+                            guild_id=guild.id,
+                            bot=server_bot
+                        )
         except aiosqlite.Error as e:
             logging.exception(f"Failed to reinstate reminders for guild {guild.id} with error: {e}")
 
@@ -94,8 +104,23 @@ async def reinstate_session_buttons(server_bot) -> None:
         try:
             async with aiosqlite.connect(f"pathparser_{guild.id}.sqlite") as db:
                 cursor = await db.cursor()
-                await cursor.execute(
-                    "SELECT Session_ID, Session_Name, Message, Session_Thread, Hammer_Time FROM Sessions WHERE IsActive = 1 AND hammer_time > ?",
+                await cursor.execute("""
+                SELECT 
+                    Session_ID, 
+                    Session_Name, 
+                    Message, 
+                    Session_Thread, 
+                    case when CAST(CAST(hammer_time AS INTEGER) AS TEXT) = CAST(hammer_time AS TEXT) THEN 'hammerTime'
+                    else 'createdTime'
+                    end as data_type,
+                    case when CAST(CAST(hammer_time AS INTEGER) AS TEXT) = CAST(hammer_time AS TEXT) THEN hammer_time 
+                    else DATE(created_time, '+7 days')
+                    end as Hammer_Time 
+                FROM Sessions 
+                WHERE IsActive = 1 
+                    AND case when CAST(CAST(hammer_time AS INTEGER) AS TEXT) = CAST(hammer_time AS TEXT) THEN hammer_time > ?
+                    ELSE  DATE(created_time, '+7 days') > CURRENT_TIMESTAMP end
+                    """,
                     (now.timestamp(),)
                 )
                 sessions = await cursor.fetchall()
@@ -110,13 +135,15 @@ async def reinstate_session_buttons(server_bot) -> None:
                     channel = await guild.fetch_channel(channel_id[0])
 
                 for session in sessions:
-                    session_id, session_name, message_id, channel_id, hammer_time_str = session
-                    session_start_time = datetime.datetime.fromtimestamp(int(hammer_time_str), datetime.timezone.utc)
+                    session_id, session_name, message_id, channel_id, data_type, hammer_time_str = session
+                    if data_type == 'hammerTime':
+                        session_start_time = datetime.datetime.fromtimestamp(int(hammer_time_str), datetime.timezone.utc)
+                    else:
+                        session_start_time = datetime.datetime.fromisoformat(
+                            hammer_time_str
+                        ).replace(tzinfo=datetime.timezone.utc)
                     timeout_seconds = (
                             session_start_time - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
-                    # Cap the timeout at 12 hours.
-                    timeout_seconds = min(timeout_seconds, 12 * 3600)
-                    print(session_id)
                     # Fetch the message to be edited.
                     try:
                         message = await channel.fetch_message(message_id)

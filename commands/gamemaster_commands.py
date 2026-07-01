@@ -539,18 +539,18 @@ async def create_session(
             cursor = await db.cursor()
             await cursor.execute(
                 f"""INSERT INTO Sessions (
-                GM_Name, Session_Name, 
+                GM_Name, Session_Name, created_time,
                 Session_Range, Session_Range_ID, Player_Limit, 
                 Play_Location, hammer_time, game_link, 
                 Overview, Description, Related_Plot,  
                 Overflow, IsActive) VALUES (
-                ?, ?, 
+                ?, ?, ?,
                 ?, ?, ?, 
                 ?, ?, ?, 
                 ?, ?, ?,
                 ?, ?)""",
                 (
-                    session_info.gm_name, session_info.session_name,
+                    session_info.gm_name, session_info.session_name, datetime.datetime.now().isoformat(sep=" ", timespec="minutes"),
                     session_info.session_range, session_info.session_range_id, session_info.player_limit,
                     session_info.play_location, session_info.hammer_time, session_info.game_link,
                     session_info.overview, session_info.description, session_info.plot,
@@ -1236,15 +1236,15 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
         else:
             hammer_time_data = complex_hammer_time_valid[1]
         if not hammer_time_data[0]:
-            await interaction.followup.send(f"Please provide a valid time: {hammer_time_data[1]}.")
-            return
+            hammer_time_stamp = hammer_time
+            time = None
+            hammer_time_field = hammer_time
         else:
             (date, time, arrival, hammer_time_stamp) = hammer_time_data[2]
             if hammer_time_data[1]:
                 hammer_time_field = f"{date} at {time} which is {arrival}"
             else:
                 hammer_time_field = f"{hammer_time}"
-
         try:
             session_name, _ = name_fix(session_name)
             overflow_value = overflow if isinstance(overflow, int) else overflow.value
@@ -1421,7 +1421,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                    description: typing.Optional[str],
                    plot: typing.Optional[str],
                    region: typing.Optional[discord.Role],
-                   overflow: typing.Optional[discord.app_commands.Choice[int]] = 1):
+                   overflow: typing.Optional[discord.app_commands.Choice[int]]):
         """Create a new session."""
         await interaction.response.defer(thinking=True, ephemeral=True)
         if game_link is not None:
@@ -1435,27 +1435,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                 gm_name=interaction.user.name,
                 guild_id=interaction.guild_id,
                 session_id=session_id)
-            if hammer_time:
-                complex_hammer_time_valid = await complex_validate_hammertime(
-                guild_id=interaction.guild_id,
-                author_name=interaction.user.name,
-                hammertime=hammer_time)
-                if complex_hammer_time_valid[0] is False:
-                    hammer_time_data = validate_hammertime(hammer_time)
-                else:
-                    hammer_time_data = complex_hammer_time_valid[1]
-                if not hammer_time_data[0]:
-                    await interaction.followup.send(f"Please provide a valid time: {hammer_time_data[1]}.")
-                    return
-                else:
-                    (date, time, arrival, hammer_time_stamp) = hammer_time_data[2]
-                    if hammer_time_data[1]:
-                        hammer_time_field = f"{date} at {time} which is {arrival}"
-                    else:
-                        hammer_time_field = f"{hammer_time}"
-            else:
-                hammer_time_stamp = None
-                hammer_time_field = None # Ensure hammer_time_field is defined if hammer_time is None
+
             if build_info is not None:
                 (build_info_base, message, session_thread) = build_info
                 build_info_base.session_name = session_name if session_name is not None else build_info_base.session_name
@@ -1464,12 +1444,52 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                 build_info_base.player_limit = player_limit if player_limit is not None else build_info_base.player_limit
                 build_info_base.play_location = play_location if play_location is not None else build_info_base.play_location
                 build_info_base.game_link = game_link if game_link is not None else build_info_base.game_link
-                build_info_base.hammer_time = hammer_time_stamp if hammer_time_stamp is not None else build_info_base.hammer_time
                 build_info_base.overview = overview if overview is not None else build_info_base.overview
                 build_info_base.description = description if description is not None else build_info_base.description
                 build_info_base.plot = plot if plot is not None else build_info_base.plot
-                build_info_base.overflow = overflow.value if overflow is not None else build_info_base.overflow
+
+                if overflow:
+                    build_info_base.overflow = overflow.value
+                else:
+                    build_info_base.overflow = build_info_base.overflow
                 build_info_base.region = region.id if region is not None else build_info_base.region
+                original_hammer_time = build_info_base.hammer_time
+                build_info_base.hammer_time = hammer_time if hammer_time else build_info_base.hammer_time
+                if build_info_base.hammer_time: # Only validate if hammer_time exists
+                    hammer_time_valid = validate_hammertime(build_info_base.hammer_time)
+                    if hammer_time:
+                        original_clear = validate_hammertime(original_hammer_time)
+                        if original_clear[1]:
+                            clear_session_reminders(
+                                session_id=session_id,
+                                start_time=original_hammer_time,
+                                jobs_to_schedule=scheduled_jobs
+                            )
+
+                    if not hammer_time_valid[0]:
+                        hammer_time_field = hammer_time
+                        time = False
+                    else:
+                        if hammer_time_valid[1]:
+
+                            (date, time, arrival, hammer_time) = hammer_time_valid[2]
+                            schedule_session_reminders(
+                                session_id=session_id,
+                                thread_id=session_thread,
+                                hammer_time=hammer_time,
+                                guild_id=interaction.guild_id,
+                                bot=self.bot
+                            )
+                            hammer_time_field = f"{date} at {time} which is {arrival}"
+                        else:
+                            (date, time, arrival) = hammer_time_valid[2]
+                            await interaction.followup.send(
+                                f"Please provide a valid hammer time. Your session of {date} at {time} which is {arrival} would occur IN THE PAST and humans haven't discovered time travel yet..")
+                            return
+                else:
+                    hammer_time_field = None
+                    time = False
+
                 if overflow:
                     if build_info_base.overflow != 1:
                         evaluated_session_range = await validate_milestone_system_overflow(
@@ -1487,21 +1507,6 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                                 build_info_base.session_range += f" and {evaluated_region_range[0].mention}"
                         elif build_info_base.overflow == 4:
                             build_info_base.session_range += "\r\n Any level can join."
-
-                time = None
-                if build_info_base.hammer_time: # Only validate if hammer_time exists
-                    hammer_time_valid = validate_hammertime(build_info_base.hammer_time)
-                    if not hammer_time_valid[0]:
-                        hammer_time_field = hammer_time
-                    else:
-                        if hammer_time_valid[1]:
-                            (date, time, arrival, hammer_time) = hammer_time_valid[2]
-                            hammer_time_field = f"{date} at {time} which is {arrival}"
-                        else:
-                            (date, time, arrival) = hammer_time_valid[2]
-                            await interaction.followup.send(
-                                f"Please provide a valid hammer time. Your session of {date} at {time} which is {arrival} would occur IN THE PAST and humans haven't discovered time travel yet..")
-                            return
 
                 session_update = await edit_session(build_info_base, session_id=session_id)
                 if not session_update:
@@ -1541,20 +1546,13 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                             content += f"\r\n {interaction.user.mention} is running a session"
                             content += f" in <@&{build_info_base.region}>!" if build_info_base.region else "!"
                             content += F"\r\n THIS IS AN LM SESSION, IF YOU HAVE NOT PREPARED TO DIE, PUSSY OUT NOW... YOU SHOULD BE SCARED. YOU SHOULD BE SCARED OF DEATH. IF YOU ARE GOING TO GET UPSETTI OVER THIS SPAGHETTI THIS IS NOT THE SESSION FOR YOU." if interaction.user.id == 237394424815026176 else ""
-                            await announcement_message.edit(content=content, embed=embed,
-                                                            view=view)
-                            clear_session_reminders(
-                                session_id=session_id,
-                                start_time=hammer_time,
-                                jobs_to_schedule=scheduled_jobs
-                            )
-                            schedule_session_reminders(
-                                session_id=session_id,
-                                thread_id=session_thread,
-                                hammer_time=hammer_time,
-                                guild_id=interaction.guild_id,
-                                bot=self.bot
-                            )
+                            await announcement_message.edit(
+                                content=content,
+                                embed=embed,
+                                view=view)
+
+
+
                             await interaction.followup.send(
                                 f"Session {build_info_base.session_name} with {session_id} has been updated at {announcement_message.jump_url}!")
                         else:
