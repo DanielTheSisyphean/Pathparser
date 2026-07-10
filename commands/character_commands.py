@@ -451,13 +451,16 @@ class CharacterCommands(commands.Cog, name='character'):
                                    discord.app_commands.Choice(name='Antihero', value=2)])
     @app_commands.describe(new_nickname='a shorthand way to look for your character in displays')
     async def edit(self, interaction: discord.Interaction, character_name: str, new_character_name: str = None,
-                   mythweavers: str = None, heroism: int = None,
+                   mythweavers: str = None, heroism: discord.app_commands.Choice[int] = None,
                    image_link: str = None, new_nickname: str = None, titles: str = None, description: str = None,
                    oath: discord.app_commands.Choice[int] = 5, color: str = None):
         guild_id = interaction.guild_id
         guild = interaction.guild
         author = interaction.user.name
-        heroism_value = heroism if isinstance(heroism, int) else heroism.value
+        if heroism:
+            heroism_value = heroism if isinstance(heroism, int) else heroism.value
+        else:
+            heroism_value = None
         await interaction.response.defer(thinking=True, ephemeral=True)
         async with aiosqlite.connect(f"pathparser_{guild_id}.sqlite") as conn:
             cursor = await conn.cursor()
@@ -512,6 +515,7 @@ class CharacterCommands(commands.Cog, name='character'):
                             new_nickname = stg_nickname
                         if titles is not None:
                             titles = str.replace(str.replace(titles, ";", ""), ")", "")
+                            titles = None if titles.lower() == 'none' else titles
                         else:
                             titles = stg_titles
                         if description is not None:
@@ -1056,6 +1060,22 @@ class CharacterCommands(commands.Cog, name='character'):
                     )
                 else:
                     (character_name, oath, level, gold, gold_value, gold_value_max, logging_thread_id) = player_info
+                    await cursor.execute("""
+                        select 
+                            s.session_id 
+                        from player_characters pc 
+                        left join Sessions_Participants  SP on pc.Character_Name = SP.Character_Name 
+                        left join Sessions S on sp.session_id = s.session_id 
+                        where pc.Character_Name = ?
+                        and s.style = 1 
+                        and s.isActive = 1
+                        """, (character_name,))
+                    active_sessions = await cursor.fetchall()
+                    if active_sessions:
+                        joined_string = ', '.join(str(row[0]) for row in active_sessions)
+                        content = f"{character_name} is a part of the below session IDs, please ask your GM to resolve the session first before claiming a gold pouch.\r\n{joined_string}"
+                        await interaction.followup.send(content, ephemeral=True)
+                        return
                     await cursor.execute("SELECT WPL FROM Milestone_System WHERE LEVEL =?", (level,))
                     gold_pouch = await cursor.fetchone()
                     if gold_pouch is None:
@@ -2386,6 +2406,8 @@ class CharacterCommands(commands.Cog, name='character'):
     @gold_group.command(name='buy', description='Buy items from NPCs for non-player trades and crafts')
     @app_commands.describe(
         market_value="market value of the item regardless of crafting. Items crafted for other players have an expected value of 0.")
+    @app_commands.describe(
+        expenditure="The Amount of Gold that is being spent to purchase this item.")
     @app_commands.autocomplete(character_name=own_character_select_autocompletion)
     async def buy(self, interaction: discord.Interaction, character_name: str, expenditure: float, market_value: float,
                   reason: str):

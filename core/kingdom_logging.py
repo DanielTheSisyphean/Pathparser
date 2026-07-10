@@ -117,7 +117,7 @@ async def settlement_embed(
 
             embed.add_field(
                 name="Primary Stats",
-                value=f':see_no_evil: **Corruption:**: {settlement_info.corruption.total}, :supervillain: **Crime**: {settlement_info.crime.total}, :hammer_pick: **Productivity**: {settlement_info.productivity.total}, :scales: **Law** {settlement_info.law.total}, :book:      **Lore**: {settlement_info.lore.total}. :speech_balloon: **Society**: {settlement_info.society.total}',
+                value=f':see_no_evil: **Corruption:**: {settlement_info.corruption.total}, :supervillain: **Crime**: {settlement_info.crime.total}, :hammer_pick: **Productivity**: {settlement_info.productivity.total},\r\n :scales: **Law** {settlement_info.law.total}, :book: **Lore**: {settlement_info.lore.total}. :speech_balloon: **Society**: {settlement_info.society.total}',
                 inline=False
             )
             embed.add_field(
@@ -254,7 +254,7 @@ async def log_embed(bot, guild: discord.Guild, old_kingdom_info: KingdomInfo,
                 resource_stat_changes += f":hammer: Current Build Points: {new_kingdom_info.build_points}, Change: {build_points_changes}\r\n" if new_kingdom_info.build_points else ""
                 resource_stat_changes += f":star: Current Fame: {new_kingdom_info.fame.total}, Change: {fame_change}\r\n" if fame_change else ""
                 resource_stat_changes += f":busts_in_silhouette: Current Population: {new_kingdom_info.population}, Change: {population_change}\r\n" if population_change else ""
-                resource_stat_changes += f":Orange_Hexagon_shape: Current Size: {new_kingdom_info.size} hexes, Change: {size_change}\r\n" if size_change else ""
+                resource_stat_changes += f":diamond_shape_with_a_dot_inside: Current Size: {new_kingdom_info.size} hexes, Change: {size_change}\r\n" if size_change else ""
                 embed_kingdom.add_field(name=f"Resource Changes",value=resource_stat_changes, inline=False)
 
             if (old_kingdom_info.control_dc.total != new_kingdom_info.control_dc.total

@@ -1,5 +1,4 @@
 import datetime
-
 import discord
 import logging
 import typing
@@ -11,11 +10,8 @@ import random
 from core.character import CharacterChange, UpdateCharacterData, update_character, gold_calculation
 from core.display import character_embed, log_embed
 from core.utils import get_gold_breakdown
-
-
 class ShopView(discord.ui.View):
     """Base class for shop views with pagination."""
-
     def __init__(self, user_id: int, guild_id: int, offset: int, limit: int, interaction: discord.Interaction,
                  content: typing.Optional[str]):
         super().__init__(timeout=180)
@@ -28,24 +24,20 @@ class ShopView(discord.ui.View):
         self.limit = limit
         self.results = []
         self.embed = None
-
         self.message = None
         # Initialize buttons
         self.first_page_button = discord.ui.Button(label='First Page', style=discord.ButtonStyle.primary)
         self.previous_page_button = discord.ui.Button(label='Previous Page', style=discord.ButtonStyle.primary)
         self.next_page_button = discord.ui.Button(label='Next Page', style=discord.ButtonStyle.primary)
         self.last_page_button = discord.ui.Button(label='Last Page', style=discord.ButtonStyle.primary)
-
         self.first_page_button.callback = self.first_page
         self.previous_page_button.callback = self.previous_page
         self.next_page_button.callback = self.next_page
         self.last_page_button.callback = self.last_page
-
         self.add_item(self.first_page_button)
         self.add_item(self.previous_page_button)
         self.add_item(self.next_page_button)
         self.add_item(self.last_page_button)
-
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         """Ensure that only the user who initiated the view can interact with the buttons."""
         if interaction.user.id != self.user_id:
@@ -55,7 +47,6 @@ class ShopView(discord.ui.View):
             )
             return False
         return True
-
     async def first_page(self, interaction: discord.Interaction):
         """Handle moving to the first page."""
         await interaction.response.defer()
@@ -70,7 +61,6 @@ class ShopView(discord.ui.View):
             embed=self.embed,
             view=self
         )
-
     async def previous_page(self, interaction: discord.Interaction):
         """Handle moving to the previous page."""
         await interaction.response.defer()
@@ -87,7 +77,6 @@ class ShopView(discord.ui.View):
             )
         else:
             await interaction.followup.send("You are on the first page.", ephemeral=True)
-
     async def next_page(self, interaction: discord.Interaction):
         """Handle moving to the next page."""
         await interaction.response.defer()
@@ -103,7 +92,6 @@ class ShopView(discord.ui.View):
             )
         else:
             await interaction.followup.send("You are on the last page.", ephemeral=True)
-
     async def last_page(self, interaction: discord.Interaction):
         """Handle moving to the last page."""
         await interaction.response.defer()
@@ -120,18 +108,15 @@ class ShopView(discord.ui.View):
             )
         else:
             await interaction.followup.send("You are on the last page.", ephemeral=True)
-
     async def update_buttons(self):
         """Update the enabled/disabled state of buttons based on the current page."""
         max_items = await self.get_max_items()
         first_page = self.offset == 1
         last_page = self.offset + self.limit - 1 >= max_items
-
         self.first_page_button.disabled = first_page
         self.previous_page_button.disabled = first_page
         self.next_page_button.disabled = last_page
         self.last_page_button.disabled = last_page
-
     async def send_initial_message(self):
         """Send the initial message with the view."""
         try:
@@ -146,7 +131,6 @@ class ShopView(discord.ui.View):
             self.message = await self.interaction.original_response()
         except (discord.HTTPException, AttributeError) as e:
             logging.error(f"Failed to send message: {e} in guild {self.interaction.guild.id} for {self.user_id}")
-
     async def on_timeout(self):
         """Disable buttons when the view times out."""
         for child in self.children:
@@ -156,23 +140,17 @@ class ShopView(discord.ui.View):
                 await self.message.edit(content=self.content, embed=self.embed, view=self)
             except discord.HTTPException as e:
                 logging.error(f"Failed to edit message on timeout: {e}")
-
     async def update_results(self):
         """Fetch the results for the current page. To be implemented in subclasses."""
         raise NotImplementedError
-
     async def create_embed(self):
         """Create the embed for the current page. To be implemented in subclasses."""
         raise NotImplementedError
-
     async def get_max_items(self):
         """Get the total number of items. To be implemented in subclasses."""
         raise NotImplementedError
-
-
 class RecipientAcknowledgementView(discord.ui.View):
     """Base class for views requiring acknowledgment."""
-
     def __init__(self, allowed_user_id: int, content: typing.Optional, interaction: discord.Interaction):
         super().__init__(timeout=7200)
         self.allowed_user_id = allowed_user_id
@@ -183,13 +161,10 @@ class RecipientAcknowledgementView(discord.ui.View):
         # Initialize buttons
         self.accept_button = discord.ui.Button(label='Accept', style=discord.ButtonStyle.primary)
         self.reject_button = discord.ui.Button(label='Reject', style=discord.ButtonStyle.danger)
-
         self.accept_button.callback = self.accept
         self.reject_button.callback = self.reject
-
         self.add_item(self.accept_button)
         self.add_item(self.reject_button)
-
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         """Ensure that only the allowed user can interact with the buttons."""
         if interaction.user.id != self.allowed_user_id:
@@ -199,7 +174,6 @@ class RecipientAcknowledgementView(discord.ui.View):
             )
             return False
         return True
-
     async def accept(self, interaction: discord.Interaction):
         """Handle the accept action."""
         await interaction.response.defer(thinking=True)
@@ -208,7 +182,6 @@ class RecipientAcknowledgementView(discord.ui.View):
             embed=self.embed,
             view=None
         )
-
     async def reject(self, interaction: discord.Interaction):
         """Handle the reject action."""
         await interaction.response.defer(thinking=True)
@@ -217,7 +190,6 @@ class RecipientAcknowledgementView(discord.ui.View):
             embed=self.embed,
             view=None
         )
-
     async def send_initial_message(self):
         """Send the initial message with the view."""
         await self.create_embed()
@@ -226,7 +198,6 @@ class RecipientAcknowledgementView(discord.ui.View):
                 configs = config_cache.cache.get(self.interaction.guild_id)
                 if configs:
                     channel_id = configs.get('Character_Transaction_Channel')
-
                     if channel_id is None:
                         await self.interaction.followup.send(
                             "Character Transaction Channel not found in the database.",
@@ -258,7 +229,6 @@ class RecipientAcknowledgementView(discord.ui.View):
                 "An error occurred while trying to send the message. Please try again later.",
                 ephemeral=True
             )
-
     async def on_timeout(self):
         """Disable buttons when the view times out."""
         for child in self.children:
@@ -268,23 +238,17 @@ class RecipientAcknowledgementView(discord.ui.View):
                 await self.message.edit(view=self)
             except discord.HTTPException as e:
                 logging.error(f"Failed to edit message on timeout: {e}")
-
     async def accepted(self, interaction: discord.Interaction):
         """To be implemented in subclasses."""
         raise NotImplementedError
-
     async def rejected(self, interaction: discord.Interaction):
         """To be implemented in subclasses."""
         raise NotImplementedError
-
     async def create_embed(self):
         """To be implemented in subclasses."""
         raise NotImplementedError
-
-
 class SelfAcknowledgementView(discord.ui.View):
     """Base class for views requiring self acknowledgment."""
-
     def __init__(self, content: typing.Optional, interaction: discord.Interaction):
         super().__init__(timeout=180)
         self.embed = None
@@ -293,17 +257,13 @@ class SelfAcknowledgementView(discord.ui.View):
         self.message = None
         self.interaction = interaction
         self.user_id = interaction.user.id
-
         # Initialize buttons
         self.accept_button = discord.ui.Button(label='Accept', style=discord.ButtonStyle.primary)
         self.reject_button = discord.ui.Button(label='Reject', style=discord.ButtonStyle.danger)
-
         self.accept_button.callback = self.accept
         self.reject_button.callback = self.reject
-
         self.add_item(self.accept_button)
         self.add_item(self.reject_button)
-
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         """Ensure that only the user who initiated the view can interact with the buttons."""
         if interaction.user.id != self.user_id:
@@ -313,7 +273,6 @@ class SelfAcknowledgementView(discord.ui.View):
             )
             return False
         return True
-
     async def send_initial_message(self):
         """Send the initial message with the view."""
         await self.create_embed()
@@ -325,7 +284,6 @@ class SelfAcknowledgementView(discord.ui.View):
             )
         except (discord.HTTPException, AttributeError) as e:
             logging.error(f"Failed to send message: {e} in guild {self.interaction.guild.id} for {self.user_id}")
-
     async def on_timeout(self):
         """Disable buttons when the view times out."""
         for child in self.children:
@@ -336,7 +294,6 @@ class SelfAcknowledgementView(discord.ui.View):
             except (discord.HTTPException, AttributeError) as e:
                 logging.error(
                     f"Failed to edit message on timeout for user {self.user_id} in guild {self.interaction.guild.id}: {e}")
-
     async def accept(self, interaction: discord.Interaction):
         """Handle the accept action."""
         await interaction.response.defer()
@@ -345,7 +302,6 @@ class SelfAcknowledgementView(discord.ui.View):
             embed=self.embed,
             view=None
         )
-
     async def reject(self, interaction: discord.Interaction):
         """Handle the reject action."""
         await interaction.response.defer()
@@ -354,23 +310,17 @@ class SelfAcknowledgementView(discord.ui.View):
             embed=self.embed,
             view=None
         )
-
     async def accepted(self, interaction: discord.Interaction):
         """To be implemented in subclasses."""
         raise NotImplementedError
-
     async def rejected(self, interaction: discord.Interaction):
         """To be implemented in subclasses."""
         raise NotImplementedError
-
     async def create_embed(self):
         """To be implemented in subclasses."""
         raise NotImplementedError
-
-
 class DualView(discord.ui.View):
     """Base class for dual views (list/detail) with pagination."""
-
     def __init__(self, user_id, guild_id, offset, limit, view_type, content: typing.Optional,
                  interaction: discord.Interaction):
         super().__init__(timeout=180)
@@ -384,26 +334,22 @@ class DualView(discord.ui.View):
         self.results = []
         self.embed = None
         self.view_type = view_type
-
         # Initialize buttons
         self.first_page_button = discord.ui.Button(label='First Page', style=discord.ButtonStyle.primary)
         self.previous_page_button = discord.ui.Button(label='Previous Page', style=discord.ButtonStyle.primary)
         self.change_view_button = discord.ui.Button(label='Change View', style=discord.ButtonStyle.primary)
         self.next_page_button = discord.ui.Button(label='Next Page', style=discord.ButtonStyle.primary)
         self.last_page_button = discord.ui.Button(label='Last Page', style=discord.ButtonStyle.primary)
-
         self.first_page_button.callback = self.first_page
         self.previous_page_button.callback = self.previous_page
         self.change_view_button.callback = self.change_view
         self.next_page_button.callback = self.next_page
         self.last_page_button.callback = self.last_page
-
         self.add_item(self.first_page_button)
         self.add_item(self.previous_page_button)
         self.add_item(self.change_view_button)
         self.add_item(self.next_page_button)
         self.add_item(self.last_page_button)
-
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         """Ensure that only the user who initiated the view can interact with the buttons."""
         try:
@@ -417,7 +363,6 @@ class DualView(discord.ui.View):
         except Exception as e:
             logging.error(f"Failed to check interaction: {e}")
             raise
-
     async def first_page(self, interaction: discord.Interaction):
         """Handle moving to the first page."""
         try:
@@ -436,7 +381,6 @@ class DualView(discord.ui.View):
         except Exception as e:
             logging.error(f"Failed to move to the first page: {e}")
             raise
-
     async def previous_page(self, interaction: discord.Interaction):
         """Handle moving to the previous page."""
         try:
@@ -457,15 +401,12 @@ class DualView(discord.ui.View):
         except Exception as e:
             logging.error(f"Failed to move to the previous page: {e}")
             raise
-
     async def send_initial_message(self):
         """Send the initial message with the view."""
         try:
-
             await self.update_results()
             await self.create_embed()
             await self.update_buttons()
-
             self.message = await self.interaction.followup.send(
                 content=self.content,
                 embed=self.embed,
@@ -476,7 +417,6 @@ class DualView(discord.ui.View):
                 f"Failed to send message due to HTTPException: {e} in guild {self.interaction.guild.id} for {self.user_id}")
         except Exception as e:
             logging.error(f"Failed to send message: {e} in guild {self.interaction.guild.id} for {self.user_id}")
-
     async def on_timeout(self):
         """Disable buttons when the view times out."""
         try:
@@ -487,11 +427,9 @@ class DualView(discord.ui.View):
                     await self.message.edit(content=self.content, embed=self.embed, view=self)
                 except discord.HTTPException as e:
                     logging.error(f"Failed to edit message on timeout: {e}")
-
         except Exception as e:
             logging.error(f"Failed to disable buttons: {e}")
             raise
-
     async def change_view(self, interaction: discord.Interaction):
         """Change the view type."""
         await interaction.response.defer()
@@ -507,7 +445,6 @@ class DualView(discord.ui.View):
         except Exception as e:
             logging.error(f"Failed to change view: {e}")
             raise
-
     async def next_page(self, interaction: discord.Interaction):
         """Handle moving to the next page."""
         try:
@@ -527,7 +464,6 @@ class DualView(discord.ui.View):
         except Exception as e:
             logging.error(f"Failed to move to the next page: {e}")
             raise
-
     async def last_page(self, interaction: discord.Interaction):
         """Handle moving to the last page."""
         try:
@@ -548,16 +484,12 @@ class DualView(discord.ui.View):
         except Exception as e:
             logging.error(f"Failed to move to the last page: {e}")
             raise
-
     async def update_buttons(self):
         """Update the enabled/disabled state of buttons based on the current page."""
         try:
-
             max_items = await self.get_max_items()
-
             first_page = self.offset == 1
             last_page = self.offset + self.limit - 1 >= max_items
-
             self.first_page_button.disabled = first_page
             self.previous_page_button.disabled = first_page
             self.next_page_button.disabled = last_page
@@ -565,27 +497,20 @@ class DualView(discord.ui.View):
         except Exception as e:
             logging.error(f"Failed to update buttons: {e}")
             raise
-
     async def on_view_change(self):
         """Change the view type."""
         raise NotImplementedError
-
     async def update_results(self):
         """Fetch the results for the current page. To be implemented in subclasses."""
         raise NotImplementedError
-
     async def create_embed(self):
         """Create the embed for the current page. To be implemented in subclasses."""
         raise NotImplementedError
-
     async def get_max_items(self):
         """Get the total number of items. To be implemented in subclasses."""
         raise NotImplementedError
-
-
 class NewDualView(discord.ui.View):
     """Base class for dual views (list/detail) with pagination."""
-
     def __init__(self, user_id, guild_id, offset, limit, view_type, content: typing.Optional,
                  interaction: discord.Interaction):
         super().__init__(timeout=180)
@@ -599,26 +524,22 @@ class NewDualView(discord.ui.View):
         self.results = []
         self.embeds = []
         self.view_type = view_type
-
         # Initialize buttons
         self.first_page_button = discord.ui.Button(label='First Page', style=discord.ButtonStyle.primary)
         self.previous_page_button = discord.ui.Button(label='Previous Page', style=discord.ButtonStyle.primary)
         self.change_view_button = discord.ui.Button(label='Change View', style=discord.ButtonStyle.primary)
         self.next_page_button = discord.ui.Button(label='Next Page', style=discord.ButtonStyle.primary)
         self.last_page_button = discord.ui.Button(label='Last Page', style=discord.ButtonStyle.primary)
-
         self.first_page_button.callback = self.first_page
         self.previous_page_button.callback = self.previous_page
         self.change_view_button.callback = self.change_view
         self.next_page_button.callback = self.next_page
         self.last_page_button.callback = self.last_page
-
         self.add_item(self.first_page_button)
         self.add_item(self.previous_page_button)
         self.add_item(self.change_view_button)
         self.add_item(self.next_page_button)
         self.add_item(self.last_page_button)
-
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         """Ensure that only the user who initiated the view can interact with the buttons."""
         try:
@@ -632,7 +553,6 @@ class NewDualView(discord.ui.View):
         except Exception as e:
             logging.error(f"Failed to check interaction: {e}")
             raise
-
     async def first_page(self, interaction: discord.Interaction):
         """Handle moving to the first page."""
         try:
@@ -651,7 +571,6 @@ class NewDualView(discord.ui.View):
         except Exception as e:
             logging.error(f"Failed to move to the first page: {e}")
             raise
-
     async def previous_page(self, interaction: discord.Interaction):
         """Handle moving to the previous page."""
         try:
@@ -672,15 +591,12 @@ class NewDualView(discord.ui.View):
         except Exception as e:
             logging.error(f"Failed to move to the previous page: {e}")
             raise
-
     async def send_initial_message(self):
         """Send the initial message with the view."""
         try:
-
             await self.update_results()
             await self.create_embed()
             await self.update_buttons()
-
             self.message = await self.interaction.followup.send(
                 content=self.content,
                 embeds=self.embeds,
@@ -691,7 +607,6 @@ class NewDualView(discord.ui.View):
                 f"Failed to send message due to HTTPException: {e} in guild {self.interaction.guild.id} for {self.user_id}")
         except Exception as e:
             logging.error(f"Failed to send message: {e} in guild {self.interaction.guild.id} for {self.user_id}")
-
     async def on_timeout(self):
         """Disable buttons when the view times out."""
         try:
@@ -702,11 +617,9 @@ class NewDualView(discord.ui.View):
                     await self.message.edit(content=self.content, embeds=self.embeds, view=self)
                 except discord.HTTPException as e:
                     logging.error(f"Failed to edit message on timeout: {e}")
-
         except Exception as e:
             logging.error(f"Failed to disable buttons: {e}")
             raise
-
     async def change_view(self, interaction: discord.Interaction):
         """Change the view type."""
         await interaction.response.defer()
@@ -722,7 +635,6 @@ class NewDualView(discord.ui.View):
         except Exception as e:
             logging.error(f"Failed to change view: {e}")
             raise
-
     async def next_page(self, interaction: discord.Interaction):
         """Handle moving to the next page."""
         try:
@@ -742,7 +654,6 @@ class NewDualView(discord.ui.View):
         except Exception as e:
             logging.error(f"Failed to move to the next page: {e}")
             raise
-
     async def last_page(self, interaction: discord.Interaction):
         """Handle moving to the last page."""
         try:
@@ -763,16 +674,12 @@ class NewDualView(discord.ui.View):
         except Exception as e:
             logging.error(f"Failed to move to the last page: {e}")
             raise
-
     async def update_buttons(self):
         """Update the enabled/disabled state of buttons based on the current page."""
         try:
-
             max_items = await self.get_max_items()
-
             first_page = self.offset == 1
             last_page = self.offset + self.limit - 1 >= max_items
-
             self.first_page_button.disabled = first_page
             self.previous_page_button.disabled = first_page
             self.next_page_button.disabled = last_page
@@ -780,28 +687,21 @@ class NewDualView(discord.ui.View):
         except Exception as e:
             logging.error(f"Failed to update buttons: {e}")
             raise
-
     async def on_view_change(self):
         """Change the view type."""
         raise NotImplementedError
-
     async def update_results(self):
         """Fetch the results for the current page. To be implemented in subclasses."""
         raise NotImplementedError
-
     async def create_embed(self):
         """Create the embed for the current page. To be implemented in subclasses."""
         raise NotImplementedError
-
     async def get_max_items(self):
         """Get the total number of items. To be implemented in subclasses."""
         raise NotImplementedError
-
-
 # Modified RetirementView with character deletion
 class RetirementView(SelfAcknowledgementView):
     """A view that allows a user to confirm or cancel the retirement of their character."""
-
     def __init__(self, character_name: str, user_id: int, guild_id: int, interaction: discord.Interaction,
                  content: str):
         super().__init__(content=content, interaction=interaction)
@@ -809,7 +709,6 @@ class RetirementView(SelfAcknowledgementView):
         self.user_id = user_id
         self.guild_id = guild_id
         self.message = None  # Will be set when the view is sent
-
     async def accepted(self, interaction: discord.Interaction):
         """Handle the confirmation of character retirement."""
         async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as conn:
@@ -828,13 +727,11 @@ class RetirementView(SelfAcknowledgementView):
                         view=None
                     )
                     return
-
                 (thread_id, message_id) = row
                 logging_thread = interaction.guild.get_channel(thread_id)
                 if not logging_thread:
                     logging_thread = await interaction.guild.fetch_channel(thread_id)
                 await logging_thread.edit(name=f"{self.character_name} - Retired")
-
                 # Fetch channel ID
                 async with config_cache.lock:
                     configs = config_cache.cache.get(interaction.guild_id)
@@ -843,21 +740,18 @@ class RetirementView(SelfAcknowledgementView):
                 if not channel_id_row:
                     return f"No channel found with Identifier 'Accepted_Bio_Channel' in Admin table."
                 channel_id = channel_id_row
-
                 # Fetch the bio channel
                 bio_channel = interaction.guild.get_channel(channel_id)
                 if bio_channel is None:
                     bio_channel = await interaction.guild.fetch_channel(channel_id)
                 if bio_channel is None:
                     return f"Channel with ID {channel_id} not found."
-
                 # Fetch and edit the message
                 try:
                     bio_message = await bio_channel.fetch_message(message_id)
                     await bio_message.delete()
                 except discord.NotFound:
                     logging.exception("Bio message not found and could not be deleted.")
-
                 sql_archive_statement = """INSERT INTO Archive_Player_Characters(Player_Name, Player_ID, True_Character_Name,
                 Title, Titles, Description, Oath, Level, Tier, Milestones, Trials, Gold, Gold_Value, Gold_Value_Max, Essence,
                 Fame, Prestige, Mythweavers, Image_Link, Tradition_Name, Tradition_Link, Template_Name, Template_Link,
@@ -869,7 +763,6 @@ class RetirementView(SelfAcknowledgementView):
                 await cursor.execute(sql_archive_statement,
                                      (interaction.user.id, self.character_name, self.character_name))
                 await conn.commit()
-
                 # Proceed with deletion
                 sql_delete = """
                     DELETE FROM Player_Characters 
@@ -892,7 +785,6 @@ class RetirementView(SelfAcknowledgementView):
                     "An unexpected error occurred while trying to retire your character. Please try again later or contact support.",
                     ephemeral=True
                 )
-
     async def rejected(self, interaction: discord.Interaction):
         """Handle the cancellation of character retirement."""
         self.embed = discord.Embed(
@@ -901,25 +793,20 @@ class RetirementView(SelfAcknowledgementView):
         )
         await self.message.edit(
             content="Character retirement cancelled.",
-
             view=None
         )
-
     async def create_embed(self):
         """Create the embed for the retirement confirmation."""
         self.embed = discord.Embed(
             title="Character Retirement",
             description=f"Are you sure you want to retire the character '{self.character_name}'?"
         )
-
-
 # Modified ShopView with additional logic
 class TitleShopView(ShopView):
     def __init__(self, user_id: int, guild_id: int, offset: int, limit: int, interaction: discord.Interaction):
         super().__init__(user_id=user_id, guild_id=guild_id, offset=offset, limit=limit, interaction=interaction,
                          content="")
         self.max_items = None  # Cache total number of items
-
     async def update_results(self):
         """Fetch the title results for the current page."""
         statement = """
@@ -930,12 +817,9 @@ class TitleShopView(ShopView):
         async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
             cursor = await db.execute(statement, (self.limit, self.offset - 1))
             self.results = await cursor.fetchall()
-
     async def create_embed(self):
         """Create the embed for the titles."""
-
         current_page = (self.offset // self.limit) + 1
-
         total_pages = ((await self.get_max_items() - 1) // self.limit) + 1
         self.embed = discord.Embed(title="Titles", description=f"Page {current_page} of {total_pages}")
         for title in self.results:
@@ -944,7 +828,6 @@ class TitleShopView(ShopView):
                 value=f"Effect: {title[1]}, Fame: {title[2]}",
                 inline=False
             )
-
     async def get_max_items(self):
         """Get the total number of titles."""
         if self.max_items is None:
@@ -953,14 +836,11 @@ class TitleShopView(ShopView):
                 count = await cursor.fetchone()
                 self.max_items = count[0]
         return self.max_items
-
-
 class PrestigeShopView(ShopView):
     def __init__(self, user_id, guild_id: int, offset: int, limit: int, interaction: discord.Interaction):
         super().__init__(user_id=user_id, guild_id=guild_id, offset=offset, limit=limit, interaction=interaction,
                          content="")
         self.max_items = None  # Cache total number of items
-
     async def update_results(self):
         """Fetch the title results for the current page."""
         statement = """
@@ -971,7 +851,6 @@ class PrestigeShopView(ShopView):
         async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
             cursor = await db.execute(statement, (self.limit, self.offset - 1))
             self.results = await cursor.fetchall()
-
     async def create_embed(self):
         """Create the embed for the titles."""
         current_page = ((self.offset) // self.limit) + 1
@@ -983,7 +862,6 @@ class PrestigeShopView(ShopView):
                                  value=f'**Fame Required**: {fame_required} **Prestige Cost**: {prestige_cost}, **Limit**: {limit} '
                                        f'\r\n **Effect**: {effect}',
                                  inline=False)
-
     async def get_max_items(self):
         """Get the total number of titles."""
         if self.max_items is None:
@@ -992,9 +870,6 @@ class PrestigeShopView(ShopView):
                 count = await cursor.fetchone()
                 self.max_items = count[0]
         return self.max_items
-
-
-
 class RumorShopView(ShopView):
     def __init__(self, user_id, guild_id: int, offset: int, limit: int, interaction: discord.Interaction, kingdom: str, settlement: str):
         super().__init__(user_id=user_id, guild_id=guild_id, offset=offset, limit=limit, interaction=interaction,
@@ -1002,12 +877,10 @@ class RumorShopView(ShopView):
         self.max_items = None  # Cache total number of items
         self.kingdom = kingdom
         self.settlement = settlement
-
     async def update_results(self):
         """Fetch the title results for the current page."""
         kingdom = self.kingdom
         settlement = self.settlement
-
         async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
             cursor = await db.cursor()
             if kingdom and settlement:
@@ -1022,7 +895,6 @@ class RumorShopView(ShopView):
                     "Select RumorID, Kingdom, Settlement, DC, Rumor, Weight from Rumors LIMIT ? OFFSET ?",
                     (self.limit, self.offset))
             self.results = await cursor.fetchall()
-
     async def create_embed(self):
         """Create the embed for the titles."""
         current_page = ((self.offset) // self.limit) + 1
@@ -1036,7 +908,6 @@ class RumorShopView(ShopView):
                                  **DC**: {dc}, Likelihood {weight} 
                                  {rumor}""",
                                  inline=False)
-
     async def get_max_items(self):
         """Get the total number of titles."""
         if self.max_items is None:
@@ -1056,8 +927,6 @@ class RumorShopView(ShopView):
                 rumor_info = await cursor.fetchone()
                 self.max_items = rumor_info[0]
         return self.max_items
-
-
 class PrestigeHistoryView(ShopView):
     def __init__(self, user_id: int, guild_id: int, offset: int, limit: int, character_name: str, item_name: str,
                  interaction: discord.Interaction):
@@ -1066,7 +935,6 @@ class PrestigeHistoryView(ShopView):
         self.max_items = None  # Cache total number of items
         self.character_name = character_name
         self.item_name = item_name
-
     async def update_results(self):
         """Fetch the history of prestige request  for the current page."""
         if self.item_name is None:
@@ -1078,7 +946,6 @@ class PrestigeHistoryView(ShopView):
             async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
                 cursor = await db.execute(statement, (self.character_name, self.limit, self.offset - 1))
                 self.results = await cursor.fetchall()
-
         else:
             statement = """
                             SELECT Item_Name, Prestige_Cost, Transaction_ID, Time, IsAllowed
@@ -1088,7 +955,6 @@ class PrestigeHistoryView(ShopView):
             async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
                 cursor = await db.execute(statement, (self.character_name, self.item_name, self.limit, self.offset - 1))
                 self.results = await cursor.fetchall()
-
     async def create_embed(self):
         """Create the embed for the titles."""
         current_page = ((self.offset) // self.limit) + 1
@@ -1102,7 +968,6 @@ class PrestigeHistoryView(ShopView):
                                  value=f'**Prestige Cost**: {prestige_cost} **Transaction ID**: {transaction_id}, **Allowed**: {allowed} '
                                        f'\r\n **Time**: {time}',
                                  inline=False)
-
     async def get_max_items(self):
         """Get the total number of titles."""
         if self.max_items is None:
@@ -1115,8 +980,6 @@ class PrestigeHistoryView(ShopView):
                 count = await cursor.fetchone()
                 self.max_items = count[0]
         return self.max_items
-
-
 class GoldHistoryView(ShopView):
     def __init__(self, user_id: int, guild_id: int, offset: int, limit: int, character_name: str,
                  interaction: discord.Interaction):
@@ -1124,10 +987,8 @@ class GoldHistoryView(ShopView):
                          content="")
         self.max_items = None  # Cache total number of items
         self.character_name = character_name
-
     async def update_results(self):
         """Fetch the history of Gold Actions  for the current page."""
-
         statement = """
                         SELECT Transaction_ID, Author_Name, Author_ID, Character_Name, 
                         gold_value, Effective_Gold_Value, Effective_Gold_Value_Max, 
@@ -1138,7 +999,6 @@ class GoldHistoryView(ShopView):
         async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
             cursor = await db.execute(statement, (self.character_name, self.limit, self.offset - 1))
             self.results = await cursor.fetchall()
-
     async def create_embed(self):
         """Create the embed for the titles."""
         current_page = (self.offset // self.limit) + 1
@@ -1154,7 +1014,6 @@ class GoldHistoryView(ShopView):
             self.embed.add_field(name=transaction_id_field,
                                  value=f'**Author**: {author_name} Source: {source_command}\r\n ***Gold Changes***: **Gold Value**: {gold_value}, **Effective Gold Value**: {effective_gold_value}, **Effective Gold Value Max**: {effective_gold_value_max}\r\n{reason}',
                                  inline=False)
-
     async def get_max_items(self):
         """Get the total number of titles."""
         if self.max_items is None:
@@ -1164,8 +1023,6 @@ class GoldHistoryView(ShopView):
                 count = await cursor.fetchone()
                 self.max_items = count[0]
         return self.max_items
-
-
 # Dual View Type Views
 class CharacterDisplayView(DualView):
     def __init__(self, user_id: int, guild_id: int, offset: int, limit: int, player_name: str, character_name: str,
@@ -1176,20 +1033,16 @@ class CharacterDisplayView(DualView):
         self.character_name = character_name
         self.view_type = view_type
         self.player_name = player_name
-
     async def update_results(self):
         """Fetch the history of prestige request  for the current page."""
         if not self.player_name:
-
             statement = """SELECT player_name, player_id, True_Character_Name, Title, Titles, Description, Oath, Level, 
                             Tier, Milestones, Milestones_Required, Trials, Trials_Required, Gold, Gold_Value, 
                             Essence, Fame, Prestige, Color, Mythweavers, Image_Link, Tradition_Name, 
                             Tradition_Link, Template_Name, Template_Link, Article_Link
                             FROM Player_Characters ORDER BY True_Character_Name ASC LIMIT ? OFFSET ?"""
             val = (self.limit, self.offset - 1)
-
         else:
-
             statement = """SELECT player_name, True_Character_Name, Title, Titles, Description, Oath, Level, 
                             Tier, Milestones, Milestones_Required, Trials, Trials_Required, Gold, Gold_Value, 
                             Essence, Fame, Prestige, Color, Mythweavers, Image_Link, Tradition_Name, 
@@ -1199,7 +1052,6 @@ class CharacterDisplayView(DualView):
         async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
             cursor = await db.execute(statement, val)
             self.results = await cursor.fetchall()
-
     async def create_embed(self):
         """Create the embed for the titles."""
         if self.view_type == 1:
@@ -1265,7 +1117,6 @@ class CharacterDisplayView(DualView):
                 linkage += f"**Template**: [{template_name}]({template_link})" if template_name else ""
                 if tradition_name or template_name:
                     self.embed.add_field(name=f'Additional Info', value=linkage, inline=False)
-
     async def get_max_items(self):
         """Get the total number of titles."""
         if self.max_items is None:
@@ -1278,15 +1129,12 @@ class CharacterDisplayView(DualView):
                 count = await cursor.fetchone()
                 self.max_items = count[0]
         return self.max_items
-
     async def on_view_change(self):
         self.view_type = 1 if self.view_type == 2 else 2
         if self.view_type == 1:
             self.limit = 5  # Change the limit to 5 for the summary view
         else:
             self.limit = 1  # Change the limit to 1 for the detailed view
-
-
 class LevelRangeDisplayView(DualView):
     def __init__(self, user_id: int, guild_id: int, offset: int, limit: int, level_range_min: int, level_range_max: int,
                  view_type: int, interaction: discord.Interaction):
@@ -1296,7 +1144,6 @@ class LevelRangeDisplayView(DualView):
         self.view_type = view_type
         self.level_range_max = level_range_max
         self.level_range_min = level_range_min
-
     async def update_results(self):
         """Fetch the history of prestige request  for the current page."""
         statement = """SELECT player_name, player_id, True_Character_Name, Title, Titles, Description, Oath, Level, 
@@ -1309,7 +1156,6 @@ class LevelRangeDisplayView(DualView):
             cursor = await db.cursor()
             await cursor.execute(statement, val)
             self.results = await cursor.fetchall()
-
     async def create_embed(self):
         """Create the embed for the titles."""
         if self.view_type == 1:
@@ -1318,7 +1164,6 @@ class LevelRangeDisplayView(DualView):
             self.embed = discord.Embed(title=f"Character Summary",
                                        description=f"Page {current_page} of {total_pages}")
             for result in self.results:
-
                 (player_name, player_id, true_character_name, title, titles, description, oath, level, tier, milestones,
                  milestones_required, trials, trials_required, gold, gold_value, essence, fame, prestige, color,
                  mythweavers, image_link, tradition_name, tradition_link, template_name, template_link,
@@ -1375,7 +1220,6 @@ class LevelRangeDisplayView(DualView):
                     self.embed.set_footer(text=f'{description}', icon_url=f'https://i.imgur.com/ibE5vSY.png')
                 else:
                     self.embed.set_footer(text=f'{description}')
-
     async def get_max_items(self):
         """Get the total number of titles."""
         if self.max_items is None:
@@ -1389,15 +1233,12 @@ class LevelRangeDisplayView(DualView):
                 return self.max_items
         else:
             return self.max_items
-
     async def on_view_change(self):
         self.view_type = 1 if self.view_type == 2 else 2
         if self.view_type == 1:
             self.limit = 5  # Change the limit to 5 for the summary view
         else:
             self.limit = 1  # Change the limit to 1 for the detailed view
-
-
 # Modified RecipientAcknowledgementView with additional logic
 class PropositionViewRecipient(RecipientAcknowledgementView):
     def __init__(
@@ -1426,7 +1267,6 @@ class PropositionViewRecipient(RecipientAcknowledgementView):
         self.prestige = prestige
         self.logging_thread = logging_thread
         self.embed = None
-
     async def accepted(self, interaction: discord.Interaction):
         """Handle the approval logic."""
         # Update the database to mark the proposition as accepted
@@ -1460,18 +1300,15 @@ class PropositionViewRecipient(RecipientAcknowledgementView):
                 guild=interaction.guild,
                 thread=self.logging_thread,
                 bot=self.bot)
-
     async def rejected(self, interaction: discord.Interaction):
         """Handle the rejection logic."""
         # Update the database to mark the proposition as rejected
-
         self.embed = discord.Embed(
             title="Proposition Rejected",
             description=f"The proposition {self.proposition_id} has been rejected.",
             color=discord.Color.red()
         )
         # Additional logic such as notifying the requester
-
     async def create_embed(self):
         """Create the initial embed for the proposition."""
         self.embed = discord.Embed(
@@ -1485,8 +1322,6 @@ class PropositionViewRecipient(RecipientAcknowledgementView):
             ),
             color=discord.Color.blue()
         )
-
-
 class GoldSendView(RecipientAcknowledgementView):
     def __init__(
             self,
@@ -1538,12 +1373,10 @@ class GoldSendView(RecipientAcknowledgementView):
         self.recipient_logging_thread = recipient_logging_thread
         self.reason = reason
         self.embed = None
-
     async def accepted(self, interaction: discord.Interaction):
         """Handle the approval logic."""
         # Update the database to mark the proposition as accepted
         # Adjust prestige, log the transaction, notify the requester, etc.
-
         self.embed = discord.Embed(
             title=f"{self.character_name} Transaction Accepted",
             description=f"The request of \r\n{self.reason}\r\n has been accepted by <@{self.allowed_user_id}>'s {self.recipient_name}.",
@@ -1654,7 +1487,6 @@ class GoldSendView(RecipientAcknowledgementView):
             else:
                 await interaction.message.edit(
                     content=f"An error occurred in the gold send command: {recipient_gold_calculation}")
-
     async def rejected(self, interaction: discord.Interaction):
         """Handle the rejection logic."""
         # Update the database to mark the proposition as rejected
@@ -1664,7 +1496,6 @@ class GoldSendView(RecipientAcknowledgementView):
             color=discord.Color.red()
         )
         # Additional logic such as notifying the requester
-
     async def create_embed(self):
         """Create the initial embed for the proposition."""
         gold_string = get_gold_breakdown(self.gold_change)
@@ -1675,8 +1506,6 @@ class GoldSendView(RecipientAcknowledgementView):
         )
         self.embed.set_author(name=self.requester_name)
         self.embed.set_footer(text="Please accept or reject this transaction before it expires.")
-
-
 # Mythweavers Views
 class AttributesView(discord.ui.View):
     def __init__(self, user_id: int, guild_id: int, modifiers: dict):
@@ -1684,7 +1513,6 @@ class AttributesView(discord.ui.View):
         self.user_id = user_id
         self.guild_id = guild_id
         self.modifiers = modifiers  # Dictionary of attribute names and their modifiers
-
         # Dynamically create buttons and add callbacks
         for attribute in self.modifiers.keys():
             button = discord.ui.Button(
@@ -1693,7 +1521,6 @@ class AttributesView(discord.ui.View):
             )
             button.callback = self.create_roll_callback(attribute)  # Assign callback
             self.add_item(button)
-
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         """Ensure that only the user who initiated the view can interact with the buttons."""
         if interaction.user.id != self.user_id:
@@ -1703,27 +1530,21 @@ class AttributesView(discord.ui.View):
             )
             return False
         return True
-
     def create_roll_callback(self, attribute: str):
         """Generate a callback function for rolling the given attribute."""
-
         async def callback(interaction: discord.Interaction):
             roll = random.randint(1, 20)
             content = f"**Rolling :game_die: {attribute.capitalize()}** base: {roll}: total: {roll + self.modifiers[attribute]}"
             content += ":broken_heart: **Critical Failure**" if roll == 1 else ""
             content += ":sparkles: **Critical Success**" if roll == 20 else ""
             await interaction.response.send_message(content=content)
-
         return callback
-
 # Ticket Views
 class TicketView(discord.ui.View):
     def __init__(self, message_id: int, guild_id: int):
         super().__init__(timeout=None)
         self.guild_id = guild_id
         self.message_id = message_id
-
-
     async def setup_buttons(self):
         # Dynamically create buttons and add callbacks
         async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
@@ -1739,9 +1560,7 @@ class TicketView(discord.ui.View):
                 3: discord.ButtonStyle.success,
                 4: discord.ButtonStyle.danger
                 }
-
                 button_style = style_dict.get(style, discord.ButtonStyle.primary)
-
                 button = discord.ui.Button(
                     label=button_label,
                     style=button_style,
@@ -1751,44 +1570,32 @@ class TicketView(discord.ui.View):
                     button.emoji = emoji
                 button.callback = self.create_thread_callback(button_label)  # Assign callback
                 self.add_item(button)
-
-
     def create_thread_callback(self, name: str):
         """Generate a callback function for rolling the given attribute."""
         async def callback(interaction: discord.Interaction):
-
             async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as conn:
                 cursor = await conn.cursor()
                 await cursor.execute("Select Count(*) from tickets_Thread where player_id = ? and active = 1",(interaction.user.id,))
                 count = await cursor.fetchone()
                 message_id = self.message_id
-
                 if count[0] >= 5:
                     await interaction.response.send_message(f"You are a fiend for these tickets, huh? You currently have {count[0]} open tickets! Close a few first!", ephemeral=True)
                     return
-
-
                 await cursor.execute("select coalesce(max(id), 0) + 1 from tickets_thread")
                 max_id = await cursor.fetchone()
-
                 await cursor.execute("Select response_content, response_title, color, response_color, modaltypeone, modaltitleone, modaldefaultone, modaltypetwo, modaltitletwo, modaldefaulttwo, modaltypethree, modaltitlethree, modaldefaultthree, modaltypefour, modaltitlefour, modaldefaultfour, modaltypefive, modaltitlefive, modaldefaultfive from tickets_buttons where buttonname = ? and messageid = ?", (name,self.message_id))
                 response = await cursor.fetchone()
-
-
                 if response is None:
                     await interaction.response.send_message("Could not find response for this ticket.", ephemeral=True)
                 (response_content, response_title, color, response_color, modaltypeone, modaltitleone, modaldefaultone, modaltypetwo, modaltitletwo, modaldefaulttwo, modaltypethree, modaltitlethree, modaldefaultthree, modaltypefour, modaltitlefour, modaldefaultfour, modaltypefive, modaltitlefive, modaldefaultfive) = response
                 await cursor.execute("Select '<@&' || notification_roles || '>' from tickets_notify where ticketname = ? and messageid = ?", (name,self.message_id))
                 roles = await cursor.fetchall()
-
                 if roles:
                     ping_group = ", ".join(role[0] for role in roles)
                     ping_group = f"<@{interaction.user.id}>, {ping_group}"
                 else:
                     ping_group = f"<@{interaction.user.id}>"
-
                 if any([modaltypeone, modaltypetwo, modaltypethree, modaltypefour, modaltypefive]):
-
                     modal_fields = [
                         (modaltypeone, modaltitleone, modaldefaultone),
                         (modaltypetwo, modaltitletwo, modaldefaulttwo),
@@ -1796,22 +1603,17 @@ class TicketView(discord.ui.View):
                         (modaltypefour, modaltitlefour, modaldefaultfour),
                         (modaltypefive, modaltitlefive, modaldefaultfive),
                     ]
-
                     # Filter out empty ones
                     modal_fields = [(mtype, mtitle, mdefault) for mtype, mtitle, mdefault in modal_fields if mtype]
-
                     class TicketModal(discord.ui.Modal, title=response_title or "Submit Ticket"):
                         def __init__(self):
                             super().__init__()
-
                             self.inputs = []
-
                             for mtype, mtitle, mdefault in modal_fields:
                                 style = (
                                     discord.TextStyle.short
                                     if mtype == 1 else discord.TextStyle.long
                                 )
-
                                 input_field = discord.ui.TextInput(
                                     label=mtitle,
                                     style=style,
@@ -1819,17 +1621,14 @@ class TicketView(discord.ui.View):
                                     required=True,
                                     max_length=1000
                                 )
-
                                 self.inputs.append(input_field)
                                 self.add_item(input_field)
-
                         async def on_submit(self, modal_interaction: discord.Interaction):
                             # Collect responses
                             thread = await modal_interaction.channel.create_thread(
                                 name=f"{name}-{modal_interaction.user.name}-{max_id[0]}",
                                 auto_archive_duration=10080, type=discord.ChannelType.private_thread,
                             )
-
                             embed = discord.Embed(
                                 title=response_title,
                                 description=f"{response_content}",
@@ -1837,7 +1636,6 @@ class TicketView(discord.ui.View):
                             )
                             for field in self.inputs:
                                 embed.add_field(name=field.label, value=field.value, inline=False)
-
                             view = threadview(
                                 thread.id,
                                 modal_interaction.guild_id,
@@ -1846,7 +1644,6 @@ class TicketView(discord.ui.View):
                                 max_id[0],
                                 modal_interaction.user.id
                             )
-
                             await thread.send(
                                 content=ping_group,
                                 embed=embed,
@@ -1870,12 +1667,10 @@ class TicketView(discord.ui.View):
                                     )
                                 )
                                 await conn.commit()
-
                             await modal_interaction.response.send_message(
                                 "Thread created successfully.",
                                 ephemeral=True
                             )
-
                     await interaction.response.send_modal(TicketModal())
                 else:
                     thread = await interaction.channel.create_thread(name=f"{name}-{interaction.user.name}-{max_id[0]}",auto_archive_duration=10080)
@@ -1887,8 +1682,6 @@ class TicketView(discord.ui.View):
                     await conn.commit()
                     await interaction.response.send_message("Thread created successfully.", ephemeral=True)
         return callback
-
-
 class threadview(discord.ui.View):
     def __init__(self, thread_id: int, guild_id: int, message_id: int, ticket_name: str, ticket_id: int, source_id: int):
         super().__init__(timeout=None)
@@ -1898,21 +1691,15 @@ class threadview(discord.ui.View):
         self.ticket_name = ticket_name
         self.ticket_id = ticket_id
         self.source_id = source_id
-
         # Initialize buttons
         self.close_button = discord.ui.Button(label='Close', style=discord.ButtonStyle.primary)
         self.claim_button = discord.ui.Button(label='Claim', style=discord.ButtonStyle.secondary)
-
         self.close_button.callback = self.close_callback
         self.claim_button.callback = self.claim_callback
-
         self.add_item(self.close_button)
         self.add_item(self.claim_button)
-
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         """Ensure that only the user who initiated the view can interact with the buttons."""
-
-
     async def close_callback(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as conn:
@@ -1938,7 +1725,6 @@ class threadview(discord.ui.View):
             closer_id_tkt=interaction.user.id,
             interaction=interaction
         )
-
     async def claim_callback(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as conn:
@@ -1956,8 +1742,6 @@ class threadview(discord.ui.View):
                 pass
             else:
                 await interaction.followup.send("You don't have permission to claim this thread.")
-
-
             await claim_thread(
                 interaction.channel,
                 claimer_name=interaction.user.name,
@@ -1965,15 +1749,12 @@ class threadview(discord.ui.View):
                 guild_id=self.guild_id
             )
             await interaction.followup.send("Thread claimed.", ephemeral=True)
-
-
 # Modified ShopView with additional logic
 class buttonlist(ShopView):
     def __init__(self, user_id: int, guild_id: int, offset: int, limit: int, interaction: discord.Interaction):
         super().__init__(user_id=user_id, guild_id=guild_id, offset=offset, limit=limit, interaction=interaction,
                          content="")
         self.max_items = None  # Cache total number of items
-
     async def update_results(self):
         """Fetch the title results for the current page."""
         statement = """
@@ -1987,12 +1768,9 @@ class buttonlist(ShopView):
         async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
             cursor = await db.execute(statement, (self.limit, self.offset - 1))
             self.results = await cursor.fetchall()
-
     async def create_embed(self):
         """Create the embed for the titles."""
-
         current_page = (self.offset // self.limit) + 1
-
         total_pages = ((await self.get_max_items() - 1) // self.limit) + 1
         self.embed = discord.Embed(title="Buttons", description=f"Page {current_page} of {total_pages}")
         for title in self.results:
@@ -2007,13 +1785,11 @@ class buttonlist(ShopView):
             response_content += f"\r\n Modal Title: {title[14]} Type: {title[13]}" if title[13] else ""
             response_content += f"\r\n Modal Title: {title[16]} Type: {title[15]}" if title[15] else ""
             response_content += f"\r\n Modal Title: {title[18]} Type: {title[17]}" if title[17] else ""
-
             self.embed.add_field(
                 name=f"Response Title: {title[5]}",
                 value=response_content,
                 inline=False
             )
-
     async def get_max_items(self):
         """Get the total number of titles."""
         if self.max_items is None:
@@ -2022,14 +1798,12 @@ class buttonlist(ShopView):
                 count = await cursor.fetchone()
                 self.max_items = count[0]
         return self.max_items
-
     # Modified ShopView with additional logic
 class ThreadListView(ShopView):
     def __init__(self, user_id: int, guild_id: int, offset: int, limit: int, interaction: discord.Interaction):
         super().__init__(user_id=user_id, guild_id=guild_id, offset=offset, limit=limit, interaction=interaction,
                          content="")
         self.max_items = None  # Cache total number of items
-
     async def update_results(self):
         """Fetch the title results for the current page."""
         statement = """
@@ -2042,12 +1816,9 @@ class ThreadListView(ShopView):
         async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
             cursor = await db.execute(statement, (self.limit, self.offset - 1))
             self.results = await cursor.fetchall()
-
     async def create_embed(self):
         """Create the embed for the titles."""
-
         current_page = (self.offset // self.limit) + 1
-
         total_pages = ((await self.get_max_items() - 1) // self.limit) + 1
         self.embed = discord.Embed(title="Tickets", description=f"Page {current_page} of {total_pages}")
         for title in self.results:
@@ -2059,10 +1830,7 @@ class ThreadListView(ShopView):
                 name=f"Ticket: {tickettype}-{player_name}-{ticket_id}",
                 value=value,
                 inline=False,
-
             )
-
-
     async def get_max_items(self):
         """Get the total number of titles."""
         if self.max_items is None:
@@ -2071,7 +1839,6 @@ class ThreadListView(ShopView):
                 count = await cursor.fetchone()
                 self.max_items = count[0]
         return self.max_items
-
 class EventDisplayView(DualView):
     def __init__(self, user_id: int, guild_id: int, offset: int, limit: int, view_type: int,
                  interaction: discord.Interaction):
@@ -2079,7 +1846,6 @@ class EventDisplayView(DualView):
                          interaction=interaction, content="")
         self.max_items = None  # Cache total number of items
         self.view_type = view_type
-
     async def update_results(self):
         """Update the results based on the current offset."""
         if self.view_type == 1:
@@ -2108,7 +1874,6 @@ class EventDisplayView(DualView):
         async with aiosqlite.connect(f"pathparser_{self.guild_id}.sqlite") as db:
             cursor = await db.execute(statement, (self.limit, self.offset))
             self.results = await cursor.fetchall()
-
     async def create_embed(self):
         """Create the embed for the titles."""
         if self.view_type == 1:
@@ -2185,7 +1950,6 @@ class EventDisplayView(DualView):
                         (id, name, severity, type, value, reroll) = consequence
                         field_content += f"\r\n**ID**: {id} **Consequence**: {name}, **Severity**: {consequence_severity_dict[severity]}, **Effects**: {type}, **Value**: {value}, **Reroll**: {consequence_rolltype_dict[reroll]}"
                     self.embed.add_field(name=f'**{name} consequences**', value=field_content, inline=False)
-
     async def get_max_items(self):
         """Get the total number of titles."""
         if self.max_items is None:
@@ -2199,10 +1963,47 @@ class EventDisplayView(DualView):
                 count = await cursor.fetchone()
                 self.max_items = count[0]
         return self.max_items
-
     async def on_view_change(self):
         self.view_type = 1 if self.view_type == 2 else 2
         if self.view_type == 1:
             self.limit = 5  # Change the limit to 5 for the summary view
         else:
             self.limit = 1  # Change the limit to 1 for the detailed view
+class FollowupAcknowledgementView(discord.ui.View):
+    """View for player followup acknowledgment."""
+    def __init__(self, player_id: int, content: typing.Optional[str] = None):
+        super().__init__(timeout=86400)  # Timeout after 24 hours
+        self.player_id = player_id
+        self.content = content
+        self.embed = None
+        self.message = None
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.player_id:
+            await interaction.response.send_message(
+                "You cannot interact with this button.",
+                ephemeral=True
+            )
+            return False
+        return True
+    @discord.ui.button(label='Acknowledge', style=discord.ButtonStyle.primary)
+    async def acknowledge(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        for child in self.children:
+            child.disabled = True
+        if self.message:
+            try:
+                await self.message.edit(content=self.content, embed=self.embed, view=self)
+            except discord.HTTPException as e:
+                logging.error(f"Failed to edit followup message on acknowledgment: {e}")
+        else:
+            await interaction.edit_original_response(view=self)
+        self.stop()
+    async def on_timeout(self):
+        """Disable buttons when the view times out."""
+        for child in self.children:
+            child.disabled = True
+        if self.message:
+            try:
+                await self.message.edit(content=self.content, embed=self.embed, view=self)
+            except discord.HTTPException as e:
+                logging.error(f"Failed to edit followup message on timeout: {e}")

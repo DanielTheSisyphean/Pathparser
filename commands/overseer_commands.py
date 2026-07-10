@@ -710,7 +710,7 @@ async def modify_blueprint(
                  district_limit, description, upgrade, discount, tier,
                  old_blueprint_name))
             await cursor.execute(
-                "UPDATE kb_Buildings set full_name = ?, WHERE building = ?",
+                "UPDATE kb_Buildings set full_name = ? WHERE building = ?",
                 (full_name, ))
             await cursor.execute(
                 "Insert into A_Audit_All (Author, Timestamp, Database_Changed, Modification, Reason) VALUES (?, ?, ?, ?, ?)",

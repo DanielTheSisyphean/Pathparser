@@ -1,5 +1,8 @@
+import asyncio
 import random
 import re
+import time
+import platform
 import logging
 import discord
 from datetime import datetime, timezone
@@ -7,6 +10,62 @@ import aiosqlite
 
 # Global state for last trigger time (needs to be moved to a better place optimally, but kept here for now)
 last_trigger_time = {}
+
+""" SERVER SIDE PING.
+async def ping(host: str, port: int = 443) -> float | None:
+    start = time.perf_counter()
+
+    try:
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(host, port),
+            timeout=5,
+        )
+
+        latency = (time.perf_counter() - start) * 1000
+
+        writer.close()
+        await writer.wait_closed()
+
+        return latency
+
+    except Exception:
+        return None
+"""
+
+
+async def ping(host: str) -> float | None:
+    if platform.system().lower() == "windows":
+        command = ["ping", "-n", "1", host]
+    else:
+        command = ["ping", "-c", "1", host]
+
+    proc = await asyncio.create_subprocess_exec(
+        *command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+
+    stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
+
+    if proc.returncode != 0:
+        return None
+
+    output = stdout.decode()
+
+    match = re.search(r"time[=<]?\s*([\d.]+)\s*ms", output, re.IGNORECASE)
+    return float(match.group(1)) if match else None
+
+
+async def ping_test():
+    google, discord = await asyncio.gather(
+        ping("google.com"),
+        ping("discord.com")
+    )
+
+    return {
+        "google": google,
+        "discord": discord,
+    }
 
 class ResponseFollowupView(discord.ui.View):
     def __init__(self, followups):
@@ -217,6 +276,26 @@ async def meme_handler(message: discord.Message):
         await message.add_reaction("🇺")
         await message.add_reaction("🇪")
         await message.add_reaction("❓")
+
+    if (message.author.id ==  243120409703088128 and message.content.lower() == 'i should really add a ping command to pathparser') \
+            or  message.content.lower() == 'solfyr should really add a ping command to pathparser':
+        ping_dict = await ping_test()
+        if ping_dict:
+            async with aiosqlite.connect(f"origin.sqlite") as db:
+                cursor = await db.cursor()
+                await cursor.execute("Select instances from memes where name = 'Ping'")
+                instances = await cursor.fetchone()
+                if not instances:
+                    count_of_pings = 1
+                    await cursor.execute("insert into memes(instances, name) VALUES (1, 'Ping')")
+                else:
+                    count_of_pings = instances[0] + 1
+                    await cursor.execute("update memes set instances = ? where name = 'Ping'", (count_of_pings,))
+                await db.commit()
+            response = f"I've been nagged about this shit {count_of_pings} times. I'm awake. \r\nGoogle Responded with {ping_dict['google']} MS Discord Responded with {ping_dict['discord']} MS"
+
+            await message.channel.send(response)
+
 
     swears = {
         "fuck": 0,

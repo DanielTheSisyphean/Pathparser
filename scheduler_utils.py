@@ -1,4 +1,5 @@
 # scheduler_utils.py
+import typing
 import asyncio
 
 import aiosqlite
@@ -379,3 +380,142 @@ async def run_daily_weather_task(bot: discord.Client) -> None:
 
         except Exception as e:
             logging.exception(f"Unexpected error in daily weather task for guild {guild.name}: {e}")
+
+
+async def send_followup_message_job(guild_id: int, thread_id: int, player_id: int, title: str, base_text: str, bot: discord.Client, attempts: int) -> None:
+    logging.info(f"Running followup job for guild {guild_id}, thread {thread_id}, player {player_id}")
+    try:
+        guild = bot.get_guild(guild_id)
+        if not guild:
+            logging.error(f"Could not find guild {guild_id} for followup job.")
+            return
+        
+        thread = guild.get_thread(thread_id)
+        if not thread:
+            try:
+                thread = await guild.fetch_channel(thread_id)
+            except Exception as e:
+                logging.error(f"Could not fetch thread {thread_id}: {e}")
+                return
+        if attempts == 0:
+            timeout_window = 300
+        if attempts == 1:
+            timeout_window = 600
+        else:
+            timeout_window = 86400
+        if thread:
+            embed = discord.Embed(
+                title=title,
+                description=base_text,
+                color=discord.Color.blue()
+            )
+            view = FollowupAcknowledgementView(
+                player_id=player_id,
+                content=f"<@{player_id}>",
+                guild_id=guild.id,
+                thread_id=thread.id,
+                title=title,
+                base_text=base_text,
+                bot=bot,
+                timeout_window=timeout_window,
+                attempts=attempts
+
+            )
+            view.embed = embed
+            msg = await thread.send(content=f"<@{player_id}>", embed=embed, view=view)
+            view.message = msg
+            logging.info(f"Followup message sent to thread {thread_id}")
+    except Exception as e:
+        logging.exception(f"Unexpected error in send_followup_message_job: {e}")
+
+
+def schedule_followup_reminder(
+        guild_id: int,
+        thread_id: int,
+        player_id: int,
+        title: str,
+        base_text: str,
+        bot: discord.Client,
+        attempts: int = 0
+) -> None:
+    global scheduler
+    if not scheduler.running:
+        logging.error("Scheduler is not running!")
+        return
+
+    run_time = datetime.now(timezone.utc) + timedelta(seconds=30)
+    job_id = f"followup_player_{player_id}_thread_{thread_id}"
+    try:
+        scheduler.add_job(
+            send_followup_message_job,
+            'date',
+            run_date=run_time,
+            args=[guild_id, thread_id, player_id, title, base_text, bot, attempts],
+            id=job_id,
+            misfire_grace_time=90,
+            replace_existing=True
+        )
+        logging.info(f"Scheduled followup job {job_id} for {run_time}")
+    except Exception as e:
+        logging.exception(f"Failed to schedule followup job {job_id}: {e}")
+
+
+class FollowupAcknowledgementView(discord.ui.View):
+    """View for player followup acknowledgment."""
+    def __init__(self, 
+        player_id: int, 
+        guild_id: int,
+        thread_id: int,
+        title: str,
+        base_text: str,
+        bot: discord.Client,
+        attempts: int,
+        timeout_window: int,
+        content: typing.Optional[str] = None
+        ):
+        super().__init__(timeout=timeout_window)  # Timeout after 60 seconds
+        self.player_id = player_id
+        self.content = content
+        self.embed = None
+        self.message = None
+        self.guild_id = guild_id
+        self.thread_id = thread_id
+        self.title = title
+        self.base_text = base_text
+        self.bot = bot
+        self.attempts = attempts
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.player_id:
+            await interaction.response.send_message(
+                "You cannot interact with this button.",
+                ephemeral=True
+            )
+            return False
+        return True
+    @discord.ui.button(label='Acknowledge', style=discord.ButtonStyle.primary)
+    async def acknowledge(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        for child in self.children:
+            child.disabled = True
+        if self.message:
+            try:
+                await self.message.edit(content=self.content, embed=self.embed, view=self)
+            except discord.HTTPException as e:
+                logging.error(f"Failed to edit followup message on acknowledgment: {e}")
+        else:
+            await interaction.edit_original_response(view=self)
+        self.stop()
+    async def on_timeout(self):
+        """Disable buttons when the view times out."""
+        self.attempts += 1
+        guild = self.bot.get_guild(self.guild_id)
+        if guild.fetch_member(self.player_id):
+            schedule_followup_reminder(self.guild_id, self.thread_id, self.player_id, self.title, self.base_text, self.bot, self.attempts)
+        for child in self.children:
+            child.disabled = True
+        if self.message:
+            try:
+                await self.message.edit(content=self.content, embed=self.embed, view=self)
+            except discord.HTTPException as e:
+                logging.error(f"Failed to edit followup message on timeout: {e}")

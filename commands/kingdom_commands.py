@@ -1029,6 +1029,14 @@ class KingdomCommands(commands.Cog, name='kingdom'):
                 status = await add_building(guild_id=interaction.guild_id, author=interaction.user.id, kingdom=kingdom,
                                             settlement=settlement, building_info=building_info, amount=amount)
                 await interaction.followup.send(content=status)
+                await kingdom_embed(
+                    kingdom=kingdom,
+                    guild=interaction.guild
+                )
+                await settlement_embed(
+                    settlement=settlement,
+                    guild=interaction.guild
+                )
         except (aiosqlite.Error, TypeError, ValueError) as e:
             logging.exception(f"Error building building: {e}")
             await interaction.followup.send(content="An error occurred while building a building.")

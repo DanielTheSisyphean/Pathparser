@@ -674,9 +674,9 @@ async def fetch_settlement(
             settlement_information.society.building_value = building_society
             settlement_information.danger.building_value = building_danger
             settlement_information.defence.building_value = building_defence
-            settlement_information.base_value.building_value = building_society
-            settlement_information.spellcasting.building_value = building_danger
-            settlement_information.supply.building_value = building_defence
+            settlement_information.base_value.building_value = building_base_value
+            settlement_information.spellcasting.building_value = building_spellcasting
+            settlement_information.supply.building_value = building_supply
 
 
             if turn_id:

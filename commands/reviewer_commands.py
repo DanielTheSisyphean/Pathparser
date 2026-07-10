@@ -2,6 +2,7 @@ import datetime
 import logging
 import os
 import typing
+import asyncio
 from decimal import Decimal
 from typing import Tuple, Union
 import aiosqlite
@@ -15,9 +16,10 @@ from core.autocomplete import stg_character_select_autocompletion, character_sel
 from core.worldanvil import put_wa_article
 from core.character import CharacterChange, gold_calculation, calculate_essence
 from core.display import log_embed, character_embed
-from core.views import SelfAcknowledgementView, ThreadListView
+from core.views import SelfAcknowledgementView, ThreadListView, FollowupAcknowledgementView
 from core.cache import autocomplete_cache
 from core.threads import claim_thread, silent_close_thread
+from scheduler_utils import schedule_followup_reminder
 
 
 async def forge_character_embed(
@@ -395,6 +397,12 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
                             if iterative_approval_content:
                                 iterative_approval_content = iterative_approval_content.replace("{user}", f"<@{info_player_id}>")
                                 iterative_approval_content = iterative_approval_content.replace("{User}", f"<@{info_player_id}>")
+                            followup_title = configs.get('Followup_Title')
+                            if followup_title:
+                                followup_title = followup_title.replace("{user}", f"<@{info_player_id}>").replace("{User}", f"<@{info_player_id}>")
+                            followup_base = configs.get('Followup_Base')
+                            if followup_base:
+                                followup_base = followup_base.replace("{user}", f"<@{info_player_id}>").replace("{User}", f"<@{info_player_id}>")
 
                             if not any([character_log_channel_id, starting_level, approved_character_role]):
                                 await interaction.followup.send(
@@ -451,7 +459,14 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
                     await cursor.execute("DELETE FROM A_STG_Player_Characters WHERE Character_Name = ?",
                                          (character_name,))
                     await db.commit()
-
+                    approved_role = interaction.guild.get_role(approved_character_role)
+                    level_role = interaction.guild.get_role(info_level_range_id)
+                    try:
+                        await interaction.guild.get_member(info_player_id).add_roles(approved_role)
+                        await interaction.guild.get_member(info_player_id).add_roles(level_role)
+                        response += f"{info_character_name} has been moved to the accepted bios."
+                    except AttributeError:
+                        response += f"{info_character_name} has been moved to the accepted bios. However, I was unable to add either the approved or level role to the player."
                     character_embed_info = await register_character_embed(character_name, guild)
                     embed = discord.Embed(title=f"{info_character_name}", url=f'{info_mythweavers}',
                                           description=f"Other Names: {info_titles}", color=int(info_color[1:], 16))
@@ -466,6 +481,16 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
                         allowed_mentions=discord.AllowedMentions(
                         users=True))
                     thread = await character_log_message.create_thread(name=f'{info_true_character_name}', auto_archive_duration=10080)
+                    if followup_title or followup_base:
+                        schedule_followup_reminder(
+                            guild_id=guild_id,
+                            thread_id=thread.id,
+                            player_id=info_player_id,
+                            title=followup_title,
+                            base_text=followup_base,
+                            bot=self.bot
+                        )
+
                     if first_approval_content or iterative_approval_content:
                         first_approval_content = first_approval_content if first_approval_content else iterative_approval_content
                         iterative_approval_content = iterative_approval_content if iterative_approval_content else first_approval_content
@@ -508,14 +533,7 @@ class ReviewerCommands(commands.Cog, name='Reviewer'):
                     await db.commit()
                     async with autocomplete_cache.lock:
                         autocomplete_cache.cache.clear()
-                    approved_role = interaction.guild.get_role(approved_character_role)
-                    level_role = interaction.guild.get_role(info_level_range_id)
-                    try:
-                        await interaction.guild.get_member(info_player_id).add_roles(approved_role)
-                        await interaction.guild.get_member(info_player_id).add_roles(level_role)
-                        response += f"{info_character_name} has been moved to the accepted bios."
-                    except AttributeError:
-                        response += f"{info_character_name} has been moved to the accepted bios. However, I was unable to add either the approved or level role to the player."
+
                     await interaction.followup.send(response,
                                                     ephemeral=True)
 

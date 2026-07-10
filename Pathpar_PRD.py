@@ -251,13 +251,13 @@ async def on_ready():
     await bot.add_cog(KingdomCommands(bot))
     await bot.add_cog(OverseerCommands(bot))
     await bot.add_cog(ManagementCommands(bot))
-    await bot.tree.sync()
+    await reinstate_rp_cache(bot)
+    await reinstate_cache(bot)
     await start_global_scheduler(bot)
     await reinstate_reminders(bot)
     await reinstate_session_buttons(bot)
     await reinstate_server_buttons(bot)
-    await reinstate_cache(bot)
-    await reinstate_rp_cache(bot)
+    await bot.tree.sync()
     await config_cache.initialize_configuration(discord_bot=bot)
     # Move background tasks here
     bot.loop.create_task(config_cache.refresh_cache_periodically(600, bot))
@@ -312,26 +312,26 @@ async def on_message(message):
             configs = config_cache.cache.get(message.guild.id, {})
             no_ping_role = configs.get('Do_Not_Ping')
             no_ping_emoji = configs.get('Do_Not_Ping_React')
+            if message.mentions and no_ping_role:
+                try:
+                    no_ping_role_flake = message.guild.get_role(no_ping_role)
+                    for member in message.mentions:
+                        if no_ping_role_flake in member.roles:
+                            await message.add_reaction(no_ping_emoji)
+                            break
+                except Exception:
+                    pass
     except Exception:
         logging.error("Error getting server configs", exc_info=True)
-        no_ping_role = None
-        no_ping_emoji = None
 
     # Check if the guild is in the cache
     async with approved_channel_cache.lock:
+
         if guild_id in approved_channel_cache.cache:
+
             if channel_id in approved_channel_cache.cache[guild_id]:
                 multiplier = approved_channel_cache.cache[guild_id][channel_id]
                 await handle_rp_message(message, multiplier)
-                if message.mentions and no_ping_role:
-                    try:
-                        no_ping_role_flake = message.guild.get_role(no_ping_role)
-                        for member in message.mentions:
-                            if no_ping_role_flake in member.roles:
-                                await message.add_reaction(no_ping_emoji)
-                                break
-                    except Exception:
-                        pass
             else:
                 logging.debug(f"Channel {channel_id} is not approved. Processing commands.")
                 await meme_handler(message)
@@ -385,6 +385,7 @@ async def on_member_join(member: discord.Member):
                 await cursor.execute("update rp_players set join_time = ? where user_id = ?", (member.joined_at.timestamp(), member.id))
             else:
                 await cursor.execute("insert into rp_players (user_id, user_name, join_time) values (?, ?, ?) ", (member.id, member.name, member.joined_at.timestamp()))
+            await db.commit()
     except Exception as e:
         logging.error(f"Error getting member {member.name} with exception: {e}", exc_info=True)
 

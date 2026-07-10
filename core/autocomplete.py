@@ -406,7 +406,7 @@ async def title_autocomplete(interaction: discord.Interaction, current: str) -> 
             (f"%{current}%", f"%{current}%"))
         title_list = await cursor.fetchall()
         for title in title_list:
-            data.append(app_commands.Choice(name=f"{title[0]}/{title[1]}", value=str(title[2])))
+            data.append(app_commands.Choice(name=f"{title[0]}/{title[1]}", value=str(title[0])))
     return data
 
 

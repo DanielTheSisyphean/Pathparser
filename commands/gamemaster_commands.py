@@ -529,6 +529,7 @@ class SessionBaseInfo:
     description: str
     plot: str
     region: int
+    style: int
 
 
 async def create_session(
@@ -543,18 +544,18 @@ async def create_session(
                 Session_Range, Session_Range_ID, Player_Limit, 
                 Play_Location, hammer_time, game_link, 
                 Overview, Description, Related_Plot,  
-                Overflow, IsActive) VALUES (
+                Overflow, style, IsActive) VALUES (
                 ?, ?, ?,
                 ?, ?, ?, 
                 ?, ?, ?, 
                 ?, ?, ?,
-                ?, ?)""",
+                ?, ?, ?)""",
                 (
                     session_info.gm_name, session_info.session_name, datetime.datetime.now().isoformat(sep=" ", timespec="minutes"),
                     session_info.session_range, session_info.session_range_id, session_info.player_limit,
                     session_info.play_location, session_info.hammer_time, session_info.game_link,
                     session_info.overview, session_info.description, session_info.plot,
-                    session_info.overflow, 1))
+                    session_info.overflow, session_info.style, 1))
             await db.commit()
 
             await cursor.execute(
@@ -578,13 +579,13 @@ async def build_edit_info(
             cursor = await db.cursor()
 
             await cursor.execute(
-                "SELECT Session_Name, Session_Range, Session_Range_ID, Player_Limit, Play_Location, hammer_time, game_link, Overview, Description, Related_Plot, Overflow, Message, Session_Thread, Region FROM Sessions WHERE Session_ID = ? AND GM_Name = ? AND IsActive = 1 Limit 1",
+                "SELECT Session_Name, Session_Range, Session_Range_ID, Player_Limit, Play_Location, hammer_time, game_link, Overview, Description, Related_Plot, Overflow, Message, Session_Thread, Region, style FROM Sessions WHERE Session_ID = ? AND GM_Name = ? AND IsActive = 1 Limit 1",
                 (session_id, gm_name))
             session_info = await cursor.fetchone()
 
             if session_info:
                 (session_name, session_range, session_range_id, player_limit, play_location, hammer_time, game_link,
-                 overview, description, plot, overflow, message, session_thread, region) = session_info
+                 overview, description, plot, overflow, message, session_thread, region, style) = session_info
 
                 built_session_info = SessionBaseInfo(
                     guild_id=guild_id,
@@ -600,7 +601,9 @@ async def build_edit_info(
                     description=description,
                     plot=plot,
                     overflow=overflow,
-                    region=region)
+                    region=region,
+                    style=style
+                )
 
                 return built_session_info, message, session_thread
 
@@ -618,10 +621,10 @@ async def edit_session(
         async with aiosqlite.connect(f"pathparser_{session_info.guild_id}.sqlite") as db:
             cursor = await db.cursor()
             await cursor.execute(
-                "UPDATE Sessions SET Session_Name = ?, Session_Range = ?, Session_Range_ID = ?, Play_Location = ?, hammer_time = ?, game_link = ?, Overview = ?, Description = ?, Player_Limit = ?, Related_plot = ?, overflow = ?, region = ? WHERE Session_ID = ?",
+                "UPDATE Sessions SET Session_Name = ?, Session_Range = ?, Session_Range_ID = ?, Play_Location = ?, hammer_time = ?, game_link = ?, Overview = ?, Description = ?, Player_Limit = ?, Related_plot = ?, overflow = ?, region = ?, style = ? WHERE Session_ID = ?",
                 (session_info.session_name, session_info.session_range, session_info.session_range_id,
                  session_info.play_location, session_info.hammer_time, session_info.game_link, session_info.overview,
-                 session_info.description, session_info.player_limit, session_info.plot, session_info.overflow, session_info.region,
+                 session_info.description, session_info.player_limit, session_info.plot, session_info.overflow, session_info.region, session_info.style,
                  session_id))
             await db.commit()
 
@@ -1205,6 +1208,10 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
         discord.app_commands.Choice(name='include next level bracket!', value=2),
         discord.app_commands.Choice(name='include lower level bracket!', value=3),
         discord.app_commands.Choice(name='ignore role requirements!', value=4)])
+    @app_commands.choices(style=[
+        discord.app_commands.Choice(name='Normal', value=1),
+        discord.app_commands.Choice(name='PbP', value=2)
+    ])
     @app_commands.autocomplete(plot=get_plots_autocomplete)
     async def create(self, interaction: discord.Interaction,
                      session_name: str,
@@ -1217,6 +1224,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                      overview: str,
                      description: str,
                      region: typing.Optional[discord.Role],
+                     style: discord.app_commands.Choice[int],
                      plot: str = '9762aebb-43ae-47d5-8c7b-30c34a55b9e5',
                      overflow: discord.app_commands.Choice[int] = 1):
         """Create a new session."""
@@ -1248,6 +1256,7 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
         try:
             session_name, _ = name_fix(session_name)
             overflow_value = overflow if isinstance(overflow, int) else overflow.value
+            style_value = style if isinstance(style, int) else style.value
             level_range_text = f"{session_range.mention}"
             if overflow_value == 2 or overflow_value == 3:
                 evaluated_session_range = await validate_milestone_system_overflow(
@@ -1300,7 +1309,8 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                     overview=overview,
                     description=description,
                     plot=plot,
-                    region=region.id if region else None
+                    region=region.id if region else None,
+                    style=style_value
                 )
                 session_id = await create_session(base_session_info)
                 if session_id == 0:
@@ -1405,6 +1415,10 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
         discord.app_commands.Choice(name='include next level bracket!', value=2),
         discord.app_commands.Choice(name='include lower level bracket!', value=3),
         discord.app_commands.Choice(name='ignore role requirements!', value=4)])
+    @app_commands.choices(style=[
+        discord.app_commands.Choice(name='Normal', value=1),
+        discord.app_commands.Choice(name='PbP', value=2)
+    ])
     @app_commands.autocomplete(session_id=player_session_autocomplete)
     @app_commands.autocomplete(group_id=group_id_autocompletion)
     @app_commands.autocomplete(plot=get_plots_autocomplete)
@@ -1421,7 +1435,8 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                    description: typing.Optional[str],
                    plot: typing.Optional[str],
                    region: typing.Optional[discord.Role],
-                   overflow: typing.Optional[discord.app_commands.Choice[int]]):
+                   overflow: typing.Optional[discord.app_commands.Choice[int]],
+                   style: typing.Optional[discord.app_commands.Choice[int]]):
         """Create a new session."""
         await interaction.response.defer(thinking=True, ephemeral=True)
         if game_link is not None:
@@ -1448,10 +1463,16 @@ class GamemasterCommands(commands.Cog, name='Gamemaster'):
                 build_info_base.description = description if description is not None else build_info_base.description
                 build_info_base.plot = plot if plot is not None else build_info_base.plot
 
+
                 if overflow:
                     build_info_base.overflow = overflow.value
                 else:
                     build_info_base.overflow = build_info_base.overflow
+                if style:
+                    style_value = style if isinstance(style, int) else style.value
+                    build_info_base.style = style_value if style_value is not None else build_info_base.style
+                else:
+                    build_info_base.style = build_info_base.style
                 build_info_base.region = region.id if region is not None else build_info_base.region
                 original_hammer_time = build_info_base.hammer_time
                 build_info_base.hammer_time = hammer_time if hammer_time else build_info_base.hammer_time

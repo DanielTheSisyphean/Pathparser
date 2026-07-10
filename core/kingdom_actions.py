@@ -4,7 +4,6 @@ import typing
 import aiosqlite
 import math
 import random
-
 import discord
 
 from core.kingdom import (
